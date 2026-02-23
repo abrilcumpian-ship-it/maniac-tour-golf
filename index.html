@@ -1253,30 +1253,44 @@ return newCal;
 
 // CRUD Inscripciones - con guardado automático (solo en modo Admin)
 const addIns=(pruebaId,jug)=>{
+let nuevoIns=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
 const ins=p.ins||[];
 if(ins.find(i=>i.id===jug.id))return p;
-return{...p,ins:[...ins,jug]};
+nuevoIns=[...ins,jug];
+return{...p,ins:nuevoIns};
 });
-// Solo preguntar guardar si es admin
-if(isAdmin){autoGuardar({viajeGastos,viajeViajeros,viajeRemanentes,cal:newCal,scores,jugadores});}
 return newCal;
 });
+if(nuevoIns)setTimeout(()=>guardarPruebaAtomica(pruebaId,{ins:nuevoIns}),50);
 };
 
 const remIns=(pruebaId,jugId)=>{
-const jugNombre=jugadores.find(j=>j.id===jugId)?.nombre||'jugador';
+let nuevoIns=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
-return{...p,ins:(p.ins||[]).filter(i=>i.id!==jugId)};
+nuevoIns=(p.ins||[]).filter(i=>i.id!==jugId);
+return{...p,ins:nuevoIns};
 });
-// Solo preguntar guardar si es admin
-if(isAdmin){autoGuardar({viajeGastos,viajeViajeros,viajeRemanentes,cal:newCal,scores,jugadores});}
 return newCal;
 });
+if(nuevoIns)setTimeout(()=>guardarPruebaAtomica(pruebaId,{ins:nuevoIns}),50);
+};
+
+const toggleComidaIns=(pruebaId,jugId)=>{
+let nuevoIns=null;
+setCal(prev=>{
+const newCal=prev.map(p=>{
+if(p.id!==pruebaId)return p;
+nuevoIns=(p.ins||[]).map(i=>i.id===jugId?{...i,comida:!i.comida}:i);
+return{...p,ins:nuevoIns};
+});
+return newCal;
+});
+if(nuevoIns)setTimeout(()=>guardarPruebaAtomica(pruebaId,{ins:nuevoIns}),50);
 };
 
 // CRUD Grupos con admin - con guardado automático (solo en modo Admin)
@@ -1388,7 +1402,7 @@ const getProximaPrueba=()=>{
 try{return cal.find(p=>!p.done&&!p.esRyder)||null;}catch(e){return null;}
 };
 
-const addConfirmado=withConfirmLock((pruebaId,jug,comida)=>{
+const addConfirmado=withConfirmLock((pruebaId,jug,comida,asiste)=>{
 if(!jug||!jug.id||!pruebaId)return;
 let nuevoConf=null;
 setCal(prev=>{
@@ -1396,7 +1410,7 @@ const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
 const confirmados=Array.isArray(p.confirmados)?p.confirmados:[];
 if(confirmados.find(c=>c.id===jug.id))return p;
-const newConfirmados=[...confirmados,{id:jug.id,nombre:jug.nombre||'',hcp:jug.hcp||0,esR:!!jug.esR,comida:!!comida}];
+const newConfirmados=[...confirmados,{id:jug.id,nombre:jug.nombre||'',hcp:jug.hcp||0,esR:!!jug.esR,comida:!!comida,asiste:asiste!==false}];
 nuevoConf=newConfirmados;
 return{...p,confirmados:newConfirmados};
 });
@@ -1427,6 +1441,21 @@ setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
 const confirmados=Array.isArray(p.confirmados)?p.confirmados.map(c=>c.id===jugId?{...c,comida:!c.comida}:c):[];
+nuevoConf=confirmados;
+return{...p,confirmados};
+});
+return newCal;
+});
+if(nuevoConf)setTimeout(()=>guardarPruebaAtomica(pruebaId,{confirmados:nuevoConf}),50);
+});
+
+const toggleAsisteConfirmado=withConfirmLock((pruebaId,jugId)=>{
+if(!jugId||!pruebaId)return;
+let nuevoConf=null;
+setCal(prev=>{
+const newCal=prev.map(p=>{
+if(p.id!==pruebaId)return p;
+const confirmados=Array.isArray(p.confirmados)?p.confirmados.map(c=>c.id===jugId?{...c,asiste:!(c.asiste!==false)}:c):[];
 nuevoConf=confirmados;
 return{...p,confirmados};
 });
@@ -1588,31 +1617,68 @@ return{holesE1,holesE2,empates,hoyoActual,probE1,probE2};
 }catch(e){return empty;}
 },[]);
 
-// Sorteo automático de equipos LIV
+// Sorteo automático de equipos LIV con anti-repetición
 const sortearEquiposLIV=(pruebaId)=>{
 const pr=getPrueba(pruebaId);
 if(!pr)return;
 const ins=pr.ins||[];
 if(ins.length<2)return alert('Se necesitan al menos 2 jugadores inscritos');
 guardandoRef.current=true;
-const shuffled=shuffle(ins);
-const n=shuffled.length;
+// Construir historial de emparejamientos previos
+const historial={};
+cal.forEach(p=>{
+if(p.id===pruebaId)return;
+// Equipos LIV activos de otras pruebas
+(p.eqLIV||[]).forEach(eq=>{
+const jug=(eq.jug||[]).map(j=>j.id);
+for(let a=0;a<jug.length;a++){for(let b=a+1;b<jug.length;b++){
+const key=[jug[a],jug[b]].sort().join('-');
+historial[key]=(historial[key]||0)+1;
+}}});
+// Resultados LIV históricos
+(p.liv||[]).forEach(r=>{
+const jug=(r.jug||[]);
+for(let a=0;a<jug.length;a++){for(let b=a+1;b<jug.length;b++){
+const key=[jug[a],jug[b]].sort().join('-');
+historial[key]=(historial[key]||0)+1;
+}}});
+});
+const getCoinc=(idA,idB)=>{const key=[idA,idB].sort().join('-');return historial[key]||0;};
+const n=ins.length;
 let tamEquipo=2;
 if(n%3===0&&n%2!==0)tamEquipo=3;
+// Sorteo greedy: minimizar coincidencias previas
+const disponibles=shuffle([...ins]);
 const equipos=[];
-let i=0;
-while(i<n){
-const resto=n-i;
-if(tamEquipo===2&&resto===3){
-equipos.push({id:Date.now()+i,jug:shuffled.slice(i,i+3)});
-i+=3;
-}else if(resto>=tamEquipo){
-equipos.push({id:Date.now()+i,jug:shuffled.slice(i,i+tamEquipo)});
-i+=tamEquipo;
-}else{
-equipos.push({id:Date.now()+i,jug:shuffled.slice(i,i+resto),esSuelto:true});
-i+=resto;
+const usados=new Set();
+while(usados.size<n){
+const libres=disponibles.filter(j=>!usados.has(j.id));
+if(libres.length===0)break;
+const resto=libres.length;
+let tamActual=tamEquipo;
+if(tamEquipo===2&&resto===3)tamActual=3;
+if(resto<tamEquipo){tamActual=resto;}
+// Elegir primer jugador aleatorio
+const primero=libres[0];
+usados.add(primero.id);
+const miembros=[primero];
+// Elegir compañeros minimizando coincidencias
+for(let m=1;m<tamActual;m++){
+const candidatos=disponibles.filter(j=>!usados.has(j.id));
+if(candidatos.length===0)break;
+// Para cada candidato, sumar coincidencias con los ya elegidos del equipo
+candidatos.sort((a,b)=>{
+const costA=miembros.reduce((s,mj)=>s+getCoinc(a.id,mj.id),0);
+const costB=miembros.reduce((s,mj)=>s+getCoinc(b.id,mj.id),0);
+if(costA!==costB)return costA-costB;
+return Math.random()-0.5;
+});
+const elegido=candidatos[0];
+usados.add(elegido.id);
+miembros.push(elegido);
 }
+const esSuelto=miembros.length<tamEquipo&&miembros.length===1;
+equipos.push({id:Date.now()+usados.size,jug:miembros,esSuelto:!!esSuelto});
 }
 setCal(prev=>{
 const newCal=prev.map(p=>p.id===pruebaId?{...p,eqLIV:equipos}:p);
@@ -1662,6 +1728,7 @@ const HomeScr=()=>{
 const prLive=liveOn&&pruebaActiva?getPrueba(pruebaActiva.id):null;
 const[selConfJug,setSelConfJug]=useState('');
 const[comidaToggle,setComidaToggle]=useState(true);
+const[asisteToggle,setAsisteToggle]=useState(true);
 const[showWAPin,setShowWAPin]=useState(false);
 const[waPin,setWaPin]=useState('');
 const[waAutorizado,setWaAutorizado]=useState(false);
@@ -1715,7 +1782,7 @@ return(
 <button className="menu-item" onClick={()=>setScr('jugadores')}><div className="menu-icon" style={{background:'#34495e15'}}>👥</div><span className="menu-label">Jugadores</span></button>
 <button className="menu-item" onClick={()=>setScr('live')}><div className="menu-icon" style={{background:'#c6282815'}}>📺</div><span className="menu-label">En Vivo</span></button>
 <button className="menu-item" onClick={()=>setScr('stats')}><div className="menu-icon" style={{background:'#9c27b015'}}>📈</div><span className="menu-label">Estadísticas</span></button>
-<button className="menu-item" onClick={()=>setScr('apuestas')}><div className="menu-icon" style={{background:'#ff980015'}}>🎰</div><span className="menu-label">Apuestas</span></button>
+<button className="menu-item" onClick={()=>setScr('apuestas')}><div className="menu-icon" style={{background:'#ff980015'}}>🎰</div><span className="menu-label">Ricky's Corner</span></button>
 </div></div>
 {/* SECCIÓN CONFIRMACIÓN DE ASISTENCIA */}
 {(()=>{
@@ -1740,17 +1807,23 @@ return(
 </div>
 {confirmados.length>0&&<div style={{marginBottom:12}}>
 <div style={{fontSize:12,fontWeight:600,color:'#666',marginBottom:6}}>Jugadores confirmados:</div>
-{confirmados.map(c=>(
+{confirmados.map(c=>{
+const asiste=c.asiste!==false;
+const comida=!!c.comida;
+const detalle=asiste&&comida?'Prueba + comida':asiste?'Solo prueba':comida?'Solo comida':'';
+const iconos=(asiste?'⛳':'')+(comida?'🍽️':'');
+return(
 <div key={c.id} className="confirm-player">
 <div className="avatar">{c.nombre.charAt(0)}</div>
 <div className="info">
 <div className="name">{c.nombre} {c.hcp} ({c.esR?Math.floor(c.hcp):Math.ceil(c.hcp)})</div>
-<div className="detail">{c.comida?'Asiste a comida - Restaurante La Parada':'No asiste a comida'}</div>
+<div className="detail">{detalle}</div>
 </div>
-<span className="meal" onClick={()=>toggleComidaConfirmado(proxPrueba.id,c.id)} style={{cursor:'pointer'}}>{c.comida?'🍽️':'❌'}</span>
+<span style={{cursor:'pointer',fontSize:14,marginRight:2}} onClick={()=>toggleAsisteConfirmado(proxPrueba.id,c.id)} title={asiste?'Quitar prueba':'Añadir prueba'}>{asiste?'⛳':'🚫'}</span>
+<span style={{cursor:'pointer',fontSize:14,marginRight:4}} onClick={()=>toggleComidaConfirmado(proxPrueba.id,c.id)} title={comida?'Quitar comida':'Añadir comida'}>{comida?'🍽️':'❌'}</span>
 <button className="remove-btn" onClick={()=>removeConfirmado(proxPrueba.id,c.id)}>✕</button>
 </div>
-))}
+);})}
 </div>}
 <div style={{background:'#e8f5e9',borderRadius:10,padding:14}}>
 <div style={{fontSize:12,fontWeight:600,color:'var(--pri)',marginBottom:8}}>Confirmar participación:</div>
@@ -1758,14 +1831,20 @@ return(
 <option value="">Selecciona tu nombre...</option>
 {noConfirmados.map(j=><option key={j.id} value={j.id}>{j.nombre} ({j.hcp})</option>)}
 </select>
+<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',background:'#fff',borderRadius:8,marginBottom:6}}>
+<span style={{fontSize:13}}>Asisto a la prueba</span>
+<div className={`toggle ${asisteToggle?'on':''}`} onClick={()=>setAsisteToggle(!asisteToggle)} style={{position:'relative',width:50,height:28,borderRadius:14,cursor:'pointer'}}></div>
+</div>
 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',background:'#fff',borderRadius:8,marginBottom:10}}>
-<span style={{fontSize:13}}>Asisto a la comida en Restaurante La Parada</span>
+<span style={{fontSize:13}}>Asisto a la comida</span>
 <div className={`toggle ${comidaToggle?'on':''}`} onClick={()=>setComidaToggle(!comidaToggle)} style={{position:'relative',width:50,height:28,borderRadius:14,cursor:'pointer'}}></div>
 </div>
+{!asisteToggle&&!comidaToggle&&<div style={{fontSize:11,color:'#c62828',marginBottom:8,textAlign:'center'}}>Selecciona al menos una opción</div>}
 <button className="btn btn-pri" onClick={()=>{
 if(!selConfJug)return;
+if(!asisteToggle&&!comidaToggle)return;
 const jug=jugadores.find(j=>j.id===selConfJug);
-if(jug){addConfirmado(proxPrueba.id,jug,comidaToggle);setSelConfJug('');setComidaToggle(true);}
+if(jug){addConfirmado(proxPrueba.id,jug,comidaToggle,asisteToggle);setSelConfJug('');setComidaToggle(true);setAsisteToggle(true);}
 }}>Confirmar Asistencia</button>
 </div>
 {/* Botón WhatsApp convocatoria - solo para Abril y Rodiles */}
@@ -2643,7 +2722,7 @@ const[betBBPrueba,setBetBBPrueba]=useState('');
 const proxPrueba=getProximaPrueba();
 if(!proxPrueba)return(
 <div className="scroll">
-<header className="hdr" style={{background:'linear-gradient(135deg,#ff9800,#f57c00)'}}><button className="hdr-back" onClick={()=>setScr('home')}>←</button><h1>Apuestas</h1></header>
+<header className="hdr" style={{background:'linear-gradient(135deg,#ff9800,#f57c00)'}}><button className="hdr-back" onClick={()=>setScr('home')}>←</button><h1>Ricky's Corner</h1></header>
 <div className="empty-state"><div className="empty-icon">🎰</div><p>No hay pruebas próximas para apostar</p></div>
 </div>
 );
@@ -2691,7 +2770,7 @@ const selAll=[...selE1,...selE2];
 
 return(
 <div className="scroll">
-<header className="hdr" style={{background:'linear-gradient(135deg,#ff9800,#f57c00)'}}><button className="hdr-back" onClick={()=>setScr('home')}>←</button><h1>Apuestas</h1></header>
+<header className="hdr" style={{background:'linear-gradient(135deg,#ff9800,#f57c00)'}}><button className="hdr-back" onClick={()=>setScr('home')}>←</button><h1>Ricky's Corner</h1></header>
 <div style={{background:'linear-gradient(135deg,#ff9800,#f57c00)',padding:'0 16px 16px',color:'#fff'}}>
 <div style={{fontSize:14,fontWeight:700}}>{proxPrueba.nombre}</div>
 <div style={{fontSize:11,opacity:.9}}>{new Date(proxPrueba.fecha).toLocaleDateString('es-ES',{day:'numeric',month:'long'})}</div>
@@ -3148,7 +3227,7 @@ return(
 {(pr.confirmados||[]).length>0&&(
 <div style={{background:'#e3f2fd',borderRadius:10,padding:12,marginBottom:15}}>
 <div style={{fontSize:12,color:'#1565c0',marginBottom:8}}>📋 <strong>{(pr.confirmados||[]).length} jugadores confirmados por ellos mismos</strong></div>
-<div style={{fontSize:11,color:'#666',marginBottom:8}}>{(pr.confirmados||[]).map(c=>`${c.nombre}${c.comida?' 🍽️':''}`).join(', ')}</div>
+<div style={{fontSize:11,color:'#666',marginBottom:8}}>{(pr.confirmados||[]).map(c=>`${c.nombre}${c.asiste!==false?' ⛳':''}${c.comida?' 🍽️':''}`).join(', ')}</div>
 <button className="btn btn-pri" style={{fontSize:12}} onClick={()=>{
 const confirmados=pr.confirmados||[];
 confirmados.forEach(c=>{
@@ -3161,7 +3240,8 @@ if(!ins.find(i=>i.id===c.id)){addIns(pr.id,c);}
 {ins.length===0?<p style={{color:'#888',fontSize:13,marginBottom:15}}>No hay jugadores inscritos</p>:ins.map(j=>(
 <div key={j.id} className="inscrito-row">
 <div className="inscrito-avatar">{j.nombre.charAt(0)}</div>
-<span className="inscrito-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span>
+<span className="inscrito-name" style={{flex:1}}>{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span>
+<span style={{cursor:'pointer',fontSize:16,marginRight:8}} onClick={()=>toggleComidaIns(pr.id,j.id)} title={j.comida?'Quitar comida':'Añadir comida'}>{j.comida?'🍽️':'❌'}</span>
 <span className="inscrito-remove" onClick={()=>remIns(pr.id,j.id)}>✕</span>
 </div>
 ))}
