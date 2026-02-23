@@ -1258,44 +1258,41 @@ return newCal;
 
 // CRUD Inscripciones - con guardado automático (solo en modo Admin)
 const addIns=(pruebaId,jug)=>{
-let nuevoIns=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
 const ins=p.ins||[];
 if(ins.find(i=>i.id===jug.id))return p;
-nuevoIns=[...ins,jug];
+const nuevoIns=[...ins,jug];
+setTimeout(()=>guardarPruebaAtomica(pruebaId,{ins:nuevoIns}),50);
 return{...p,ins:nuevoIns};
 });
 return newCal;
 });
-if(nuevoIns)setTimeout(()=>guardarPruebaAtomica(pruebaId,{ins:nuevoIns}),50);
 };
 
 const remIns=(pruebaId,jugId)=>{
-let nuevoIns=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
-nuevoIns=(p.ins||[]).filter(i=>i.id!==jugId);
+const nuevoIns=(p.ins||[]).filter(i=>i.id!==jugId);
+setTimeout(()=>guardarPruebaAtomica(pruebaId,{ins:nuevoIns}),50);
 return{...p,ins:nuevoIns};
 });
 return newCal;
 });
-if(nuevoIns)setTimeout(()=>guardarPruebaAtomica(pruebaId,{ins:nuevoIns}),50);
 };
 
 const toggleComidaIns=(pruebaId,jugId)=>{
-let nuevoIns=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
-nuevoIns=(p.ins||[]).map(i=>i.id===jugId?{...i,comida:!i.comida}:i);
+const nuevoIns=(p.ins||[]).map(i=>i.id===jugId?{...i,comida:!i.comida}:i);
+setTimeout(()=>guardarPruebaAtomica(pruebaId,{ins:nuevoIns}),50);
 return{...p,ins:nuevoIns};
 });
 return newCal;
 });
-if(nuevoIns)setTimeout(()=>guardarPruebaAtomica(pruebaId,{ins:nuevoIns}),50);
 };
 
 // CRUD Grupos con admin - con guardado automático (solo en modo Admin)
@@ -1377,23 +1374,17 @@ return newCal;
 // para evitar que 13 usuarios se pisen el calendario entero
 const guardarPruebaAtomica=(pruebaId,updatedPrueba)=>{
 try{
-// Usar CAL_INI para el índice (inmutable) evitando race conditions por índice desincronizado
 const idx=CAL_INI.findIndex(p=>p.id===pruebaId);
 if(idx===-1)return;
-// CRITICAL: bloquear listener durante escritura para que no sobreescriba cambios locales
 guardandoRef.current=true;
 const ts=new Date().toISOString();
 db.ref('maniac/cal/'+idx).update(updatedPrueba).then(()=>{
 db.ref('maniac/ultimaActualizacion').set(ts).catch(()=>{});
-// Desbloquear tras 800ms para que el eco de Firebase llegue con datos actualizados
 setTimeout(()=>{guardandoRef.current=false;
 if(pendingDataRef.current&&!throttleRef.current){const pd=pendingDataRef.current;pendingDataRef.current=null;procesarDatos(pd);}
 },800);
-}).catch((e)=>{
-console.error('Error escritura atómica:',e);
-guardandoRef.current=false;
-});
-}catch(e){console.error('Error guardarPruebaAtomica:',e);guardandoRef.current=false;}
+}).catch(()=>{guardandoRef.current=false;});
+}catch(e){guardandoRef.current=false;}
 };
 
 // Anti doble-click: locks independientes por tipo de operación (no se bloquean entre sí)
@@ -1416,64 +1407,56 @@ try{return cal.find(p=>!p.done&&!p.esRyder)||null;}catch(e){return null;}
 
 const addConfirmado=withConfirmLock((pruebaId,jug,comida,asiste)=>{
 if(!jug||!jug.id||!pruebaId)return;
-let nuevoConf=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
 const confirmados=Array.isArray(p.confirmados)?p.confirmados:[];
 if(confirmados.find(c=>c.id===jug.id))return p;
 const newConfirmados=[...confirmados,{id:jug.id,nombre:jug.nombre||'',hcp:jug.hcp||0,esR:!!jug.esR,comida:!!comida,asiste:asiste!==false}];
-nuevoConf=newConfirmados;
+setTimeout(()=>guardarPruebaAtomica(pruebaId,{confirmados:newConfirmados}),50);
 return{...p,confirmados:newConfirmados};
 });
 return newCal;
 });
-if(nuevoConf)setTimeout(()=>guardarPruebaAtomica(pruebaId,{confirmados:nuevoConf}),50);
 });
 
 const removeConfirmado=withConfirmLock((pruebaId,jugId)=>{
 if(!jugId||!pruebaId)return;
-let nuevoConf=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
 const confirmados=Array.isArray(p.confirmados)?p.confirmados.filter(c=>c.id!==jugId):[];
-nuevoConf=confirmados;
+setTimeout(()=>guardarPruebaAtomica(pruebaId,{confirmados}),50);
 return{...p,confirmados};
 });
 return newCal;
 });
-if(nuevoConf)setTimeout(()=>guardarPruebaAtomica(pruebaId,{confirmados:nuevoConf}),50);
 });
 
 const toggleComidaConfirmado=withConfirmLock((pruebaId,jugId)=>{
 if(!jugId||!pruebaId)return;
-let nuevoConf=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
 const confirmados=Array.isArray(p.confirmados)?p.confirmados.map(c=>c.id===jugId?{...c,comida:!c.comida}:c):[];
-nuevoConf=confirmados;
+setTimeout(()=>guardarPruebaAtomica(pruebaId,{confirmados}),50);
 return{...p,confirmados};
 });
 return newCal;
 });
-if(nuevoConf)setTimeout(()=>guardarPruebaAtomica(pruebaId,{confirmados:nuevoConf}),50);
 });
 
 const toggleAsisteConfirmado=withConfirmLock((pruebaId,jugId)=>{
 if(!jugId||!pruebaId)return;
-let nuevoConf=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
 const confirmados=Array.isArray(p.confirmados)?p.confirmados.map(c=>c.id===jugId?{...c,asiste:!(c.asiste!==false)}:c):[];
-nuevoConf=confirmados;
+setTimeout(()=>guardarPruebaAtomica(pruebaId,{confirmados}),50);
 return{...p,confirmados};
 });
 return newCal;
 });
-if(nuevoConf)setTimeout(()=>guardarPruebaAtomica(pruebaId,{confirmados:nuevoConf}),50);
 });
 
 // === SISTEMA DE APUESTAS ===
@@ -1490,23 +1473,20 @@ partidaId:partidaId||null,
 importe:importe||'',
 estado:tipo==='2v2'?'aceptada':'pendiente',ganador:null,resultado:null
 };
-let nuevasAp=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
 const apuestas=[...(Array.isArray(p.apuestas)?p.apuestas:[]),apuesta];
-nuevasAp=apuestas;
+setTimeout(()=>guardarPruebaAtomica(pruebaId,{apuestas}),50);
 return{...p,apuestas};
 });
 return newCal;
 });
-if(nuevasAp)setTimeout(()=>guardarPruebaAtomica(pruebaId,{apuestas:nuevasAp}),50);
 });
 
 const aceptarApuesta=withBetLock((pruebaId,apuestaId,jugId)=>{
 const jug=jugadores.find(j=>j.id===jugId);
 if(!jug||!pruebaId||!apuestaId)return;
-let nuevasAp=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
@@ -1518,17 +1498,15 @@ return{...a,retado:{id:jug.id,nombre:jug.nombre},estado:'aceptada'};
 }
 return{...a,estado:'aceptada'};
 });
-nuevasAp=apuestas;
+setTimeout(()=>guardarPruebaAtomica(pruebaId,{apuestas}),50);
 return{...p,apuestas};
 });
 return newCal;
 });
-if(nuevasAp)setTimeout(()=>guardarPruebaAtomica(pruebaId,{apuestas:nuevasAp}),50);
 });
 
 const rechazarApuesta=withBetLock((pruebaId,apuestaId)=>{
 if(!pruebaId||!apuestaId)return;
-let nuevasAp=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
@@ -1537,27 +1515,24 @@ if(a.id!==apuestaId)return a;
 if(a.estado!=='pendiente')return a;
 return{...a,estado:'rechazada'};
 });
-nuevasAp=apuestas;
+setTimeout(()=>guardarPruebaAtomica(pruebaId,{apuestas}),50);
 return{...p,apuestas};
 });
 return newCal;
 });
-if(nuevasAp)setTimeout(()=>guardarPruebaAtomica(pruebaId,{apuestas:nuevasAp}),50);
 });
 
 const finalizarApuesta=withBetLock((pruebaId,apuestaId,ganador,resultado)=>{
 if(!pruebaId||!apuestaId)return;
-let nuevasAp=null;
 setCal(prev=>{
 const newCal=prev.map(p=>{
 if(p.id!==pruebaId)return p;
 const apuestas=(Array.isArray(p.apuestas)?p.apuestas:[]).map(a=>a.id===apuestaId?{...a,estado:'finalizada',ganador:ganador||null,resultado:resultado||null}:a);
-nuevasAp=apuestas;
+setTimeout(()=>guardarPruebaAtomica(pruebaId,{apuestas}),50);
 return{...p,apuestas};
 });
 return newCal;
 });
-if(nuevasAp)setTimeout(()=>guardarPruebaAtomica(pruebaId,{apuestas:nuevasAp}),50);
 });
 
 // Calcular Better Ball 2v2 por hoyo - MEMOIZABLE
