@@ -748,6 +748,11 @@ reader.readAsText(file);
 };
 
 // Preguntar antes de cerrar si hay cambios sin guardar
+// Persistir cal en localStorage en cada cambio (para que guardarPruebaAtomica persista al recargar)
+useEffect(()=>{
+try{localStorage.setItem('maniac_calendario',JSON.stringify(cal));}catch(e){}
+},[cal]);
+
 useEffect(()=>{
 const handleBeforeUnload=(e)=>{
 if(cambiosPendientes){e.preventDefault();e.returnValue='Tienes cambios sin guardar. ¿Seguro que quieres salir?';}
@@ -1375,13 +1380,20 @@ try{
 // Usar CAL_INI para el índice (inmutable) evitando race conditions por índice desincronizado
 const idx=CAL_INI.findIndex(p=>p.id===pruebaId);
 if(idx===-1)return;
+// CRITICAL: bloquear listener durante escritura para que no sobreescriba cambios locales
+guardandoRef.current=true;
 const ts=new Date().toISOString();
 db.ref('maniac/cal/'+idx).update(updatedPrueba).then(()=>{
 db.ref('maniac/ultimaActualizacion').set(ts).catch(()=>{});
+// Desbloquear tras 800ms para que el eco de Firebase llegue con datos actualizados
+setTimeout(()=>{guardandoRef.current=false;
+if(pendingDataRef.current&&!throttleRef.current){const pd=pendingDataRef.current;pendingDataRef.current=null;procesarDatos(pd);}
+},800);
 }).catch((e)=>{
 console.error('Error escritura atómica:',e);
+guardandoRef.current=false;
 });
-}catch(e){console.error('Error guardarPruebaAtomica:',e);}
+}catch(e){console.error('Error guardarPruebaAtomica:',e);guardandoRef.current=false;}
 };
 
 // Anti doble-click: locks independientes por tipo de operación (no se bloquean entre sí)
