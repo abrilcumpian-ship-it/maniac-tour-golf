@@ -580,6 +580,11 @@ const onValue=(snapshot)=>{
 if(!mounted)return;
 const datos=snapshot.val();
 if(!datos)return;
+// BLOCK: si estamos guardando, NO procesar datos de Firebase (evita sobreescribir cambios locales)
+if(guardandoRef.current){
+pendingDataRef.current=datos;
+return;
+}
 // THROTTLE: si ya hay un procesamiento pendiente, guardar datos y esperar
 if(throttleRef.current){
 pendingDataRef.current=datos;
@@ -658,7 +663,10 @@ setCambiosPendientes(false);
 setGuardado(true);
 setFirebaseConectado(true);
 // Desbloquear rapido (600ms) para no perder updates de otros
-setTimeout(()=>{setGuardado(false);setGuardandoFirebase(false);guardandoRef.current=false;},600);
+setTimeout(()=>{setGuardado(false);setGuardandoFirebase(false);guardandoRef.current=false;
+// Procesar datos pendientes que llegaron durante el guardado
+if(pendingDataRef.current&&!throttleRef.current){const pd=pendingDataRef.current;pendingDataRef.current=null;procesarDatos(pd);}
+},600);
 // Guardar en localStorage de forma asincrona para no bloquear UI
 setTimeout(()=>{try{
 localStorage.setItem('maniac_viaje_gastos',JSON.stringify(datos.viajeGastos||viajeGastos));
@@ -681,12 +689,12 @@ return false;
 if(forzar){
 const p=ejecutarGuardado();
 // Safety: desbloquear guardandoRef si se queda stuck (max 5s) en path forzado
-setTimeout(()=>{if(guardandoRef.current){guardandoRef.current=false;setGuardandoFirebase(false);}},5000);
+setTimeout(()=>{if(guardandoRef.current){guardandoRef.current=false;setGuardandoFirebase(false);if(pendingDataRef.current&&!throttleRef.current){const pd=pendingDataRef.current;pendingDataRef.current=null;procesarDatos(pd);}}},5000);
 return p;
 }
 debounceRef.current=setTimeout(ejecutarGuardado,1200);
 // Safety: desbloquear guardandoRef si se queda stuck (max 6s)
-setTimeout(()=>{if(guardandoRef.current){guardandoRef.current=false;setGuardandoFirebase(false);}},6000);
+setTimeout(()=>{if(guardandoRef.current){guardandoRef.current=false;setGuardandoFirebase(false);if(pendingDataRef.current&&!throttleRef.current){const pd=pendingDataRef.current;pendingDataRef.current=null;procesarDatos(pd);}}},6000);
 };
 
 // Auto-guardar sin bloquear UI (reemplaza confirm() que congelaba la app)
