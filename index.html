@@ -394,12 +394,16 @@ const[tab,setTab]=useState('general');
 const[admScr,setAdmScr]=useState(null);
 const[selPrueba,setSelPrueba]=useState(null);
 const[liveOn,setLiveOn]=useState(false);
+const liveOnRef=useRef(false);
 const[hole,setHole]=useState(1);
 const[scores,setScores]=useState(()=>{
 try{const saved=localStorage.getItem('maniac_scores');return saved?JSON.parse(saved):{};}catch(e){return {};}
 });
+const scoresLocalRef=useRef({});
 const[partidaActiva,setPartidaActiva]=useState(null);
+const partidaActivaRef=useRef(null);
 const[pruebaActiva,setPruebaActiva]=useState(null);
+const[lbTab,setLbTab]=useState('ind'); // 'ind' o 'liv' - tab del leaderboard en scoring
 // Estado del viaje con persistencia en localStorage
 const[isViajeAdmin,setIsViajeAdmin]=useState(false);
 const[showViajeLogin,setShowViajeLogin]=useState(false);
@@ -436,6 +440,8 @@ const debounceRef=React.useRef(null);
 
 // Ref para timestamp local (evita re-suscribir el listener)
 const ultimaActRef=useRef(null);
+// STABILITY FIX: Debounce específico para auto-guardar scores durante scoring
+const scoreDebounceRef=useRef(null);
 
 // Cargar datos desde Firebase al iniciar Y escuchar cambios en tiempo real
 // SIN dependencias variables para evitar re-suscripcion infinita
@@ -503,7 +509,23 @@ console.error('Error merging cal:',e);
 setCal(CAL_INI);
 }
 }
-if(datos.scores)setScores(datos.scores);
+// STABILITY FIX: Si el scoring está activo, hacer MERGE de scores
+if(datos.scores){
+if(liveOnRef.current&&partidaActivaRef.current){
+const jugLocales=new Set((partidaActivaRef.current.jug||[]).map(j=>j.id));
+setScores(prev=>{
+const merged={...datos.scores};
+Object.keys(prev).forEach(key=>{
+const jugId=key.split('-')[0];
+if(jugLocales.has(jugId)){merged[key]=prev[key];}
+});
+Object.keys(scoresLocalRef.current).forEach(key=>{merged[key]=scoresLocalRef.current[key];});
+return merged;
+});
+}else{
+setScores(datos.scores);
+}
+}
 // Forzar handicaps correctos de JUG_INI si Firebase tiene valores desactualizados
 // Y ASEGURAR que todos los jugadores de JUG_INI existen (por si falta alguno en Firebase)
 const fbJugadores=datos.jugadores||JUG_INI;
@@ -580,7 +602,7 @@ if(pendingDataRef.current){
 const p2=pendingDataRef.current;pendingDataRef.current=null;
 procesarDatos(p2);
 }
-},800);
+},2000);
 }else{
 procesarDatos(pending);
 }
@@ -669,6 +691,7 @@ setTimeout(()=>{if(guardandoRef.current){guardandoRef.current=false;setGuardando
 
 // Auto-guardar sin bloquear UI (reemplaza confirm() que congelaba la app)
 const autoGuardar=(datosOverride=null)=>{
+guardandoRef.current=true;
 setCambiosPendientes(true);
 guardarTodo(datosOverride);
 };
@@ -779,6 +802,42 @@ if(ho){tot+=stb(g,ho.p,gE(hcp,ho.i));thru=h;}
 return{...j,totalPts:tot,hoyosJugados:thru};
 }).sort((a,b)=>b.totalPts-a.totalPts);
 },[scores,pruebaActiva,campoAct,cal]);
+
+// Prueba activa con datos actualizados del calendario
+const pruebaActivaGrp=useMemo(()=>{
+if(!pruebaActiva)return null;
+const pr=cal.find(p=>p.id===pruebaActiva.id);
+return pr||null;
+},[cal,pruebaActiva]);
+
+// Leaderboard LIV (equipos) de la prueba activa - en tiempo real
+const lbLIV=useMemo(()=>{
+if(!campoAct||!pruebaActivaGrp)return[];
+const eqLIV=pruebaActivaGrp.eqLIV||[];
+if(eqLIV.length===0)return[];
+const calcPts=(j)=>{
+const hcp=hcpJ(j.hcp,j.esR);let tot=0,thru=0;
+for(let h=1;h<=18;h++){
+const g=scores[`${j.id}-${h}`];
+if(g>0){const ho=campoAct.hoyos.find(x=>x.n===h);if(ho){tot+=stb(g,ho.p,gE(hcp,ho.i));thru=h;}}
+}
+return{totalPts:tot,hoyosJugados:thru};
+};
+const equiposConPts=eqLIV.map(eq=>{
+const miembros=(eq.jug||[]).map(j=>{const pts=calcPts(j);return{...j,...pts};});
+const totalEquipo=miembros.reduce((s,j)=>s+j.totalPts,0);
+const maxThru=Math.max(0,...miembros.map(j=>j.hoyosJugados));
+return{...eq,miembros,totalEquipo,maxThru,esSuelto:!!eq.esSuelto};
+});
+const equiposNormales=equiposConPts.filter(e=>!e.esSuelto&&e.miembros.length>1);
+if(equiposNormales.length>0){
+const totales=equiposNormales.map(e=>e.totalEquipo);
+const mejor=Math.max(...totales);const peor=Math.min(...totales);
+const media=Math.round((mejor+peor)/2);
+equiposConPts.forEach(e=>{if(e.esSuelto&&e.miembros.length===1){e.totalEquipo=e.miembros[0].totalPts+media;e.bonusSuelto=media;}});
+}
+return equiposConPts.sort((a,b)=>b.totalEquipo-a.totalEquipo);
+},[scores,pruebaActivaGrp,campoAct]);
 
 const login=pwd=>{if(pwd==='maniac2025'){setIsAdmin(true);setShowLogin(false);setScr('admin');}};
 const loginViaje=pwd=>{if(pwd==='PEKAS'){setIsViajeAdmin(true);setShowViajeLogin(false);}};
@@ -1101,6 +1160,7 @@ if(!pr)return;
 const confirmados=pr.confirmados||[];
 const ins=confirmados.length>0?confirmados:(pr.ins||[]);
 if(ins.length<2)return;
+guardandoRef.current=true;
 const esPrimera=cal.findIndex(p=>p.id===pruebaId)===0;
 const esFinal=pr.esFinal;
 let jugOrdenados;
@@ -1150,8 +1210,9 @@ const pr=getPrueba(pruebaId);
 if(!pr||!pr.esRyder)return;
 const ins=pr.ins||[];
 if(ins.length<12)return;
+guardandoRef.current=true;
 const result=formarEquiposRyder(ins);
-if(!result)return;
+if(!result){guardandoRef.current=false;return;}
 const parejasA=formarParejasRyder(result.equipoA);
 const parejasB=formarParejasRyder(result.equipoB);
 const partidos=parejasA.map((pA,i)=>({id:Date.now()+i,parejaA:pA,parejaB:parejasB[i],resultado:null,hoyo:1,scoresA:{},scoresB:{}}));
@@ -1519,14 +1580,49 @@ return{holesE1,holesE2,empates,hoyoActual,probE1,probE2};
 }catch(e){return empty;}
 },[]);
 
+// Sorteo automático de equipos LIV
+const sortearEquiposLIV=(pruebaId)=>{
+const pr=getPrueba(pruebaId);
+if(!pr)return;
+const ins=pr.ins||[];
+if(ins.length<2)return alert('Se necesitan al menos 2 jugadores inscritos');
+guardandoRef.current=true;
+const shuffled=shuffle(ins);
+const n=shuffled.length;
+let tamEquipo=2;
+if(n%3===0&&n%2!==0)tamEquipo=3;
+const equipos=[];
+let i=0;
+while(i<n){
+const resto=n-i;
+if(tamEquipo===2&&resto===3){
+equipos.push({id:Date.now()+i,jug:shuffled.slice(i,i+3)});
+i+=3;
+}else if(resto>=tamEquipo){
+equipos.push({id:Date.now()+i,jug:shuffled.slice(i,i+tamEquipo)});
+i+=tamEquipo;
+}else{
+equipos.push({id:Date.now()+i,jug:shuffled.slice(i,i+resto),esSuelto:true});
+i+=resto;
+}
+}
+setCal(prev=>{
+const newCal=prev.map(p=>p.id===pruebaId?{...p,eqLIV:equipos}:p);
+if(isAdmin){autoGuardar({viajeGastos,viajeViajeros,viajeRemanentes,cal:newCal,scores,jugadores});}
+return newCal;
+});
+};
+
 // Score básico (el guardado se hace con el botón dedicado en la pantalla de scoring)
 const setScore=(jid,h,g)=>{setScores(prev=>({...prev,[`${jid}-${h}`]:Math.max(0,g)}));setCambiosPendientes(true);};
 
 const startScoring=(prueba,grupo)=>{
 setPruebaActiva(prueba);
 setPartidaActiva(grupo);
+partidaActivaRef.current=grupo;
 setHole(1);
 setLiveOn(true);
+liveOnRef.current=true;
 setScr('scoring');
 };
 
@@ -2947,12 +3043,33 @@ return(
 );});
 }catch(e){return null;}
 })()}
-<div className="lb"><div className="lb-hdr"><span className="lb-title"><span className="live-dot"></span> LEADERBOARD GLOBAL</span><span style={{fontSize:10,opacity:.7}}>{lbGlobal.length} jugadores</span></div>
+{lbLIV.length>0&&<div style={{display:'flex',gap:6,marginBottom:10}}>
+<button onClick={()=>setLbTab('ind')} style={{flex:1,padding:'8px 0',borderRadius:8,border:'none',fontWeight:700,fontSize:12,cursor:'pointer',background:lbTab==='ind'?'var(--pri)':'#f0f0f0',color:lbTab==='ind'?'#fff':'#666'}}>🏆 Individual</button>
+<button onClick={()=>setLbTab('liv')} style={{flex:1,padding:'8px 0',borderRadius:8,border:'none',fontWeight:700,fontSize:12,cursor:'pointer',background:lbTab==='liv'?'var(--danger)':'#f0f0f0',color:lbTab==='liv'?'#fff':'#666'}}>⚡ LIV Equipos</button>
+</div>}
+{lbTab==='ind'||lbLIV.length===0?(<div className="lb"><div className="lb-hdr"><span className="lb-title"><span className="live-dot"></span> LEADERBOARD GLOBAL</span><span style={{fontSize:10,opacity:.7}}>{lbGlobal.length} jugadores</span></div>
 {lbGlobal.length>0?lbGlobal.map((j,i)=>{
 const esDeEstaPartida=partidaActiva?.jug?.find(x=>x.id===j.id);
 return(<div key={j.id} className="lb-row" style={{background:esDeEstaPartida?'rgba(198,40,40,0.1)':'transparent'}}><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)}){esDeEstaPartida&&<span style={{marginLeft:4,fontSize:10}}>●</span>}</span><span className="lb-thru">Thru {j.hoyosJugados||'-'}</span><span className="lb-score">{j.totalPts}</span></div>);
 }):<div className="lb-row" style={{justifyContent:'center',color:'#888'}}>Esperando datos...</div>}
+</div>):(
+<div className="lb"><div className="lb-hdr" style={{background:'var(--danger)'}}><span className="lb-title"><span className="live-dot"></span> LEADERBOARD LIV</span><span style={{fontSize:10,opacity:.7}}>{lbLIV.length} equipos</span></div>
+{lbLIV.map((eq,i)=>(
+<div key={eq.id||i}>
+<div className="lb-row" style={{background:i===0?'rgba(201,162,39,0.15)':'transparent',borderBottom:'none',paddingBottom:2}}>
+<span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span>
+<span className="lb-name" style={{fontWeight:700}}>{eq.miembros.map(j=>j.nombre).join(' & ')}{eq.esSuelto?' (suelto)':''}</span>
+<span className="lb-thru">Thru {eq.maxThru||'-'}</span>
+<span className="lb-score" style={{color:'var(--danger)'}}>{eq.totalEquipo}</span>
 </div>
+<div style={{padding:'0 14px 8px 39px',borderBottom:'1px solid #333'}}>
+{eq.miembros.map(j=><div key={j.id} style={{fontSize:11,color:'#aaa',display:'flex',justifyContent:'space-between'}}><span>{j.nombre}</span><span>{j.totalPts} pts</span></div>)}
+{eq.bonusSuelto>0&&<div style={{fontSize:10,color:'#ff9800',marginTop:2}}>+{eq.bonusSuelto} bonus suelto</div>}
+</div>
+</div>
+))}
+</div>
+)}
 </div>
 </div>
 );};
@@ -3351,6 +3468,10 @@ return(
 <div className="scroll">
 <header className="hdr"><button className="hdr-back" onClick={()=>{setSelPrueba(null);setAdmScr('liv');}}>←</button><div><h1>{pr.nombre}</h1><p>Equipos LIV</p></div></header>
 <div className="sec">
+<div style={{background:'#ffebee',borderRadius:10,padding:12,marginBottom:12}}>
+<p style={{fontSize:12,color:'#c62828',margin:'0 0 8px',fontWeight:600}}>Sorteo automático: equipos de {(pr.ins||[]).length%3===0&&(pr.ins||[]).length%2!==0?3:2} jugadores ({(pr.ins||[]).length} inscritos)</p>
+<button className="btn btn-danger" onClick={()=>sortearEquiposLIV(pr.id)}>🎲 Sortear Equipos LIV</button>
+</div>
 <button className="btn btn-danger" style={{marginBottom:15}} onClick={()=>addEL(pr.id)}>+ Nuevo Equipo LIV</button>
 {eqs.map((eq,idx)=>(
 <div key={eq.id} className="liv-pair">
@@ -3427,6 +3548,21 @@ setModoResultados(true);
 
 // Función para confirmar resultados con comida y pasar a edición
 const confirmarResultados=()=>{
+if(pruebaActiva&&lbLIV.length>0){
+setCal(prev=>{
+const newCal=prev.map(p=>{
+if(p.id!==pruebaActiva.id)return p;
+const livResult=lbLIV.map((eq,i)=>{
+const pos=i+1;
+const pLIV=getPuntosPosicion(pos);
+return{jug:eq.miembros.map(j=>j.nombre),pts:eq.miembros.map(j=>j.totalPts),tot:eq.totalEquipo,pos,pLIV,esSuelto:eq.esSuelto||false,bonusSuelto:eq.bonusSuelto||0};
+});
+return{...p,liv:livResult};
+});
+autoGuardar({viajeGastos,viajeViajeros,viajeRemanentes,cal:newCal,scores,jugadores});
+return newCal;
+});
+}
 guardarTodo();
 setModoResultados(false);
 setModoEdicion(true);
@@ -3435,7 +3571,10 @@ setModoEdicion(true);
 // Función para salir del scoring
 const salirScoring=()=>{
 setLiveOn(false);
+liveOnRef.current=false;
 setPartidaActiva(null);
+partidaActivaRef.current=null;
+scoresLocalRef.current={};
 setPruebaActiva(null);
 setModoEdicion(false);
 setModoResultados(false);
@@ -3454,10 +3593,20 @@ const todosConScore=jugadores_partida.every(j=>{const g=scores[`${j.id}-${hole}`
 // Verificar si es el último hoyo
 const esUltimoHoyo=hole===18;
 
-// Función local para cambiar score
+// Función local para cambiar score con auto-guardado
 const cambiarScore=(jid,h,g)=>{
 const newG=Math.max(0,g);
-setScores(prev=>({...prev,[`${jid}-${h}`]:newG}));
+const key=`${jid}-${h}`;
+scoresLocalRef.current[key]=newG;
+setScores(prev=>{
+const updated={...prev,[key]:newG};
+if(scoreDebounceRef.current)clearTimeout(scoreDebounceRef.current);
+scoreDebounceRef.current=setTimeout(()=>{
+scoresLocalRef.current={};
+autoGuardar({viajeGastos,viajeViajeros,viajeRemanentes,cal,scores:updated,jugadores});
+},2000);
+return updated;
+});
 };
 
 // Valor especial para "levantar bola" (pick up ball) = 0 pts stableford
@@ -3478,14 +3627,10 @@ cambiarScore(jid,h,Math.max(1,actual+delta));
 };
 
 // Levantar bola
-const levantarBola=(jid,h)=>{
-setScores(prev=>({...prev,[`${jid}-${h}`]:PICK_UP}));
-};
+const levantarBola=(jid,h)=>{cambiarScore(jid,h,PICK_UP);};
 
 // Quitar levantar bola (volver a sin score)
-const quitarLevantarBola=(jid,h)=>{
-setScores(prev=>({...prev,[`${jid}-${h}`]:0}));
-};
+const quitarLevantarBola=(jid,h)=>{cambiarScore(jid,h,0);};
 
 // Label relativo al par
 const labelVsPar=(golpes,par)=>{
@@ -3754,12 +3899,33 @@ return(
 })()}
 
 <div style={{marginTop:16}}>
-<div className="lb"><div className="lb-hdr"><span className="lb-title"><span className="live-dot"></span> LEADERBOARD GLOBAL</span><span style={{fontSize:10,opacity:.7}}>{lbGlobal.length} jugadores</span></div>
+{lbLIV.length>0&&<div style={{display:'flex',gap:6,marginBottom:10}}>
+<button onClick={()=>setLbTab('ind')} style={{flex:1,padding:'8px 0',borderRadius:8,border:'none',fontWeight:700,fontSize:12,cursor:'pointer',background:lbTab==='ind'?'var(--pri)':'#f0f0f0',color:lbTab==='ind'?'#fff':'#666'}}>🏆 Individual</button>
+<button onClick={()=>setLbTab('liv')} style={{flex:1,padding:'8px 0',borderRadius:8,border:'none',fontWeight:700,fontSize:12,cursor:'pointer',background:lbTab==='liv'?'var(--danger)':'#f0f0f0',color:lbTab==='liv'?'#fff':'#666'}}>⚡ LIV Equipos</button>
+</div>}
+{lbTab==='ind'||lbLIV.length===0?(<div className="lb"><div className="lb-hdr"><span className="lb-title"><span className="live-dot"></span> LEADERBOARD GLOBAL</span><span style={{fontSize:10,opacity:.7}}>{lbGlobal.length} jugadores</span></div>
 {lbGlobal.length>0?lbGlobal.map((j,i)=>{
 const esDeEstaPartida=partidaActiva?.jug?.find(x=>x.id===j.id);
 return(<div key={j.id} className="lb-row" style={{background:esDeEstaPartida?'rgba(198,40,40,0.1)':'transparent'}}><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)}){esDeEstaPartida&&<span style={{marginLeft:4,fontSize:10}}>●</span>}</span><span className="lb-thru">Thru {j.hoyosJugados||'-'}</span><span className="lb-score">{j.totalPts}</span></div>);
 }):<div className="lb-row" style={{justifyContent:'center',color:'#888'}}>Sin datos</div>}
+</div>):(
+<div className="lb"><div className="lb-hdr" style={{background:'var(--danger)'}}><span className="lb-title"><span className="live-dot"></span> LEADERBOARD LIV</span><span style={{fontSize:10,opacity:.7}}>{lbLIV.length} equipos</span></div>
+{lbLIV.map((eq,i)=>(
+<div key={eq.id||i}>
+<div className="lb-row" style={{background:i===0?'rgba(201,162,39,0.15)':'transparent',borderBottom:'none',paddingBottom:2}}>
+<span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span>
+<span className="lb-name" style={{fontWeight:700}}>{eq.miembros.map(j=>j.nombre).join(' & ')}{eq.esSuelto?' (suelto)':''}</span>
+<span className="lb-thru">Thru {eq.maxThru||'-'}</span>
+<span className="lb-score" style={{color:'var(--danger)'}}>{eq.totalEquipo}</span>
 </div>
+<div style={{padding:'0 14px 8px 39px',borderBottom:'1px solid #333'}}>
+{eq.miembros.map(j=><div key={j.id} style={{fontSize:11,color:'#aaa',display:'flex',justifyContent:'space-between'}}><span>{j.nombre}</span><span>{j.totalPts} pts</span></div>)}
+{eq.bonusSuelto>0&&<div style={{fontSize:10,color:'#ff9800',marginTop:2}}>+{eq.bonusSuelto} bonus suelto</div>}
+</div>
+</div>
+))}
+</div>
+)}
 </div>
 <button className="btn btn-sec" style={{marginTop:12}} onClick={()=>mostrarConfirm('¿Salir sin guardar? Los datos del hoyo actual se perderán si no confirmas.',salirScoring)}>← Salir</button>
 </div>
