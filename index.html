@@ -293,8 +293,8 @@ totalPagado:21820.24
 };
 
 const pc=p=>p===1?'gold':p===2?'silver':p===3?'bronze':'';
-const hcpJ=(h,r)=>r?Math.floor(h):Math.ceil(h);
-const gE=(hcp,idx)=>{if(hcp<=0)return idx<=Math.abs(hcp)?-1:0;if(hcp<=18)return idx<=hcp?1:0;if(hcp<=36)return idx<=(hcp-18)?2:1;return idx<=(hcp-36)?3:2;};
+const hcpJ=(h,r)=>r?-Math.floor(h):Math.ceil(h);
+const gE=(hcp,idx)=>{if(hcp<0)return idx>(18+hcp)?-1:0;if(hcp===0)return 0;if(hcp<=18)return idx<=hcp?1:0;if(hcp<=36)return idx<=(hcp-18)?2:1;return idx<=(hcp-36)?3:2;};
 const stb=(g,p,e)=>{if(!g)return 0;const d=g-e-p;return d<=-3?5:d===-2?4:d===-1?3:d===0?2:d===1?1:0;};
 const genCode=()=>Math.random().toString(36).substring(2,6).toUpperCase();
 
@@ -306,8 +306,9 @@ const j=jugadores?.find(x=>x.nombre===jug.nombre||x.nombre===jug)||jug;
 const nombre=j.nombre||jug.nombre||jug;
 const hcp=j.hcp;
 if(hcp===undefined||hcp===null)return nombre;
+const pre=j.esR?'+':'';
 const hcpJuego=j.esR?Math.floor(hcp):Math.ceil(hcp);
-return`${nombre} ${hcp} (${hcpJuego})`;
+return`${nombre} ${pre}${hcp} (${pre}${hcpJuego})`;
 };
 
 // Sistema de puntos por posición (índice 0 = 1º puesto)
@@ -1803,7 +1804,7 @@ return(
 <div key={c.id} className="confirm-player">
 <div className="avatar">{c.nombre.charAt(0)}</div>
 <div className="info">
-<div className="name">{c.nombre} {c.hcp} ({c.esR?Math.floor(c.hcp):Math.ceil(c.hcp)})</div>
+<div className="name">{c.nombre} {c.esR?'+':''}{c.hcp} ({c.esR?'+':''}{c.esR?Math.floor(c.hcp):Math.ceil(c.hcp)})</div>
 <div className="detail">{detalle}</div>
 </div>
 <span style={{cursor:'pointer',fontSize:14,marginRight:2}} onClick={()=>toggleAsisteConfirmado(proxPrueba.id,c.id)} title={asiste?'Quitar prueba':'Añadir prueba'}>{asiste?'⛳':'🚫'}</span>
@@ -1816,7 +1817,7 @@ return(
 <div style={{fontSize:12,fontWeight:600,color:'var(--pri)',marginBottom:8}}>Confirmar participación:</div>
 <select value={selConfJug} onChange={e=>setSelConfJug(e.target.value)} style={{width:'100%',padding:10,border:'2px solid var(--pri)',borderRadius:8,fontSize:14,marginBottom:10}}>
 <option value="">Selecciona tu nombre...</option>
-{noConfirmados.map(j=><option key={j.id} value={j.id}>{j.nombre} ({j.hcp})</option>)}
+{noConfirmados.map(j=><option key={j.id} value={j.id}>{j.nombre} ({j.esR?'+':''}{j.hcp})</option>)}
 </select>
 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',background:'#fff',borderRadius:8,marginBottom:6}}>
 <span style={{fontSize:13}}>Asisto a la prueba</span>
@@ -2444,7 +2445,7 @@ return(
 {data.map(j=>(
 <div key={j.nombre} className={`rank-item ${pc(j.pos)}`} onClick={()=>clickJug(j.nombre)}>
 <div className={`rank-pos ${pc(j.pos)}`}>{j.pos}</div>
-<div className="rank-info"><div className="rank-name">{j.nombre} {(()=>{const jg=jugadores.find(x=>x.nombre===j.nombre);if(!jg)return'';const hcpJ=jg.esR?Math.floor(jg.hcp):Math.ceil(jg.hcp);return`${jg.hcp} (${hcpJ})`;})()}</div></div>
+<div className="rank-info"><div className="rank-name">{j.nombre} {(()=>{const jg=jugadores.find(x=>x.nombre===j.nombre);if(!jg)return'';const pre=jg.esR?'+':'';const hcpJ=jg.esR?Math.floor(jg.hcp):Math.ceil(jg.hcp);return`${pre}${jg.hcp} (${pre}${hcpJ})`;})()}</div></div>
 <div className={`rank-total ${tab==='liv'?'liv':''}`}>{j.total}</div>
 </div>
 ))}
@@ -2463,7 +2464,7 @@ return(
 <div key={j.id} className="card" onClick={()=>{setSelJug(j);setScr('jugador-detalle');}}>
 <div style={{display:'flex',alignItems:'center'}}>
 <div style={{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,var(--pri),var(--pri-l))',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,marginRight:12}}>{j.nombre.charAt(0)}</div>
-<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</div><div style={{fontSize:11,color:'#888'}}>{getTotal(j.nombre)} pts</div></div>
+<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</div><div style={{fontSize:11,color:'#888'}}>{getTotal(j.nombre)} pts</div></div>
 <span style={{color:'#888'}}>→</span>
 </div>
 </div>
@@ -2620,7 +2621,7 @@ return(
 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
 <div style={{width:28,height:28,borderRadius:'50%',background:i===0?'#c9a227':i===1?'#a8a8a8':i===2?'#cd7f32':'#e0e0e0',color:i<3?'#fff':'#666',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:12}}>{i+1}</div>
 <div style={{flex:1}}>
-<div style={{fontWeight:700,fontSize:14}}>{j.nombre} <span style={{fontWeight:400,fontSize:12,color:'#888'}}>{j.hcp} ({j.hcpJuego})</span></div>
+<div style={{fontWeight:700,fontSize:14}}>{j.nombre} <span style={{fontWeight:400,fontSize:12,color:'#888'}}>{j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.hcpJuego})</span></div>
 <div style={{fontSize:11,color:'#888'}}>{j.count} pruebas • {j.victorias>0?`${j.victorias} victoria${j.victorias>1?'s':''}`:''}</div>
 </div>
 <div style={{textAlign:'right'}}>
@@ -2649,7 +2650,7 @@ return(
 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
 <div style={{width:28,height:28,borderRadius:'50%',background:i===0?'#c9a227':i===1?'#a8a8a8':i===2?'#cd7f32':'#e0e0e0',color:i<3?'#fff':'#666',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:12}}>{i+1}</div>
 <div style={{flex:1}}>
-<div style={{fontWeight:700,fontSize:14}}>{j.nombre} <span style={{fontWeight:400,fontSize:12,color:'#888'}}>{j.hcp} ({j.hcpJuego})</span></div>
+<div style={{fontWeight:700,fontSize:14}}>{j.nombre} <span style={{fontWeight:400,fontSize:12,color:'#888'}}>{j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.hcpJuego})</span></div>
 <div style={{fontSize:11,color:'#888'}}>#{j.posGen} clasificación • {j.ptsGen} pts</div>
 </div>
 <div style={{textAlign:'right'}}>
@@ -2672,7 +2673,7 @@ return(
 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
 <div style={{width:28,height:28,borderRadius:'50%',background:i===0?'#c9a227':i===1?'#a8a8a8':i===2?'#cd7f32':'#e0e0e0',color:i<3?'#fff':'#666',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:12}}>{i+1}</div>
 <div style={{flex:1}}>
-<div style={{fontWeight:700,fontSize:14}}>{j.nombre} <span style={{fontWeight:400,fontSize:12,color:'#888'}}>{j.hcp} ({j.hcpJuego})</span></div>
+<div style={{fontWeight:700,fontSize:14}}>{j.nombre} <span style={{fontWeight:400,fontSize:12,color:'#888'}}>{j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.hcpJuego})</span></div>
 <div style={{fontSize:11,color:'var(--danger)'}}>#{j.posLiv} LIV • {j.ptsLiv} pts</div>
 </div>
 <div style={{textAlign:'right'}}>
@@ -2878,14 +2879,14 @@ return(
 <label style={{fontSize:11,fontWeight:600,color:'#1565c0',marginBottom:4,display:'block'}}>Jugador 1:</label>
 <select value={betE1p1} onChange={e=>setBetE1p1(e.target.value)} style={{width:'100%',padding:10,border:'1px solid #90caf9',borderRadius:8,fontSize:14,background:'#fff'}}>
 <option value="">Seleccionar...</option>
-{bbJugDisponibles.filter(j=>!selAll.includes(j.id)||j.id===betE1p1).map(j=><option key={j.id} value={j.id}>{j.nombre} ({j.hcp})</option>)}
+{bbJugDisponibles.filter(j=>!selAll.includes(j.id)||j.id===betE1p1).map(j=><option key={j.id} value={j.id}>{j.nombre} ({j.esR?'+':''}{j.hcp})</option>)}
 </select>
 </div>
 <div>
 <label style={{fontSize:11,fontWeight:600,color:'#1565c0',marginBottom:4,display:'block'}}>Jugador 2:</label>
 <select value={betE1p2} onChange={e=>setBetE1p2(e.target.value)} style={{width:'100%',padding:10,border:'1px solid #90caf9',borderRadius:8,fontSize:14,background:'#fff'}}>
 <option value="">Seleccionar...</option>
-{bbJugDisponibles.filter(j=>!selAll.includes(j.id)||j.id===betE1p2).map(j=><option key={j.id} value={j.id}>{j.nombre} ({j.hcp})</option>)}
+{bbJugDisponibles.filter(j=>!selAll.includes(j.id)||j.id===betE1p2).map(j=><option key={j.id} value={j.id}>{j.nombre} ({j.esR?'+':''}{j.hcp})</option>)}
 </select>
 </div>
 </div>
@@ -2896,14 +2897,14 @@ return(
 <label style={{fontSize:11,fontWeight:600,color:'#c62828',marginBottom:4,display:'block'}}>Jugador 1:</label>
 <select value={betE2p1} onChange={e=>setBetE2p1(e.target.value)} style={{width:'100%',padding:10,border:'1px solid #ef9a9a',borderRadius:8,fontSize:14,background:'#fff'}}>
 <option value="">Seleccionar...</option>
-{bbJugDisponibles.filter(j=>!selAll.includes(j.id)||j.id===betE2p1).map(j=><option key={j.id} value={j.id}>{j.nombre} ({j.hcp})</option>)}
+{bbJugDisponibles.filter(j=>!selAll.includes(j.id)||j.id===betE2p1).map(j=><option key={j.id} value={j.id}>{j.nombre} ({j.esR?'+':''}{j.hcp})</option>)}
 </select>
 </div>
 <div>
 <label style={{fontSize:11,fontWeight:600,color:'#c62828',marginBottom:4,display:'block'}}>Jugador 2:</label>
 <select value={betE2p2} onChange={e=>setBetE2p2(e.target.value)} style={{width:'100%',padding:10,border:'1px solid #ef9a9a',borderRadius:8,fontSize:14,background:'#fff'}}>
 <option value="">Seleccionar...</option>
-{bbJugDisponibles.filter(j=>!selAll.includes(j.id)||j.id===betE2p2).map(j=><option key={j.id} value={j.id}>{j.nombre} ({j.hcp})</option>)}
+{bbJugDisponibles.filter(j=>!selAll.includes(j.id)||j.id===betE2p2).map(j=><option key={j.id} value={j.id}>{j.nombre} ({j.esR?'+':''}{j.hcp})</option>)}
 </select>
 </div>
 </div>
@@ -3124,7 +3125,7 @@ return(
 {lbTab==='ind'||lbLIV.length===0?(<div className="lb"><div className="lb-hdr"><span className="lb-title"><span className="live-dot"></span> LEADERBOARD GLOBAL</span><span style={{fontSize:10,opacity:.7}}>{lbGlobal.length} jugadores</span></div>
 {lbGlobal.length>0?lbGlobal.map((j,i)=>{
 const esDeEstaPartida=partidaActiva?.jug?.find(x=>x.id===j.id);
-return(<div key={j.id} className="lb-row" style={{background:esDeEstaPartida?'rgba(198,40,40,0.1)':'transparent'}}><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)}){esDeEstaPartida&&<span style={{marginLeft:4,fontSize:10}}>●</span>}</span><span className="lb-thru">Thru {j.hoyosJugados||'-'}</span><span className="lb-score">{j.totalPts}</span></div>);
+return(<div key={j.id} className="lb-row" style={{background:esDeEstaPartida?'rgba(198,40,40,0.1)':'transparent'}}><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)}){esDeEstaPartida&&<span style={{marginLeft:4,fontSize:10}}>●</span>}</span><span className="lb-thru">Thru {j.hoyosJugados||'-'}</span><span className="lb-score">{j.totalPts}</span></div>);
 }):<div className="lb-row" style={{justifyContent:'center',color:'#888'}}>Esperando datos...</div>}
 </div>):(
 <div className="lb"><div className="lb-hdr" style={{background:'var(--danger)'}}><span className="lb-title"><span className="live-dot"></span> LEADERBOARD LIV</span><span style={{fontSize:10,opacity:.7}}>{lbLIV.length} equipos</span></div>
@@ -3227,7 +3228,7 @@ if(!ins.find(i=>i.id===c.id)){addIns(pr.id,c);}
 {ins.length===0?<p style={{color:'#888',fontSize:13,marginBottom:15}}>No hay jugadores inscritos</p>:ins.map(j=>(
 <div key={j.id} className="inscrito-row">
 <div className="inscrito-avatar">{j.nombre.charAt(0)}</div>
-<span className="inscrito-name" style={{flex:1}}>{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span>
+<span className="inscrito-name" style={{flex:1}}>{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span>
 <span style={{cursor:'pointer',fontSize:16,marginRight:8}} onClick={()=>toggleComidaIns(pr.id,j.id)} title={j.comida?'Quitar comida':'Añadir comida'}>{j.comida?'🍽️':'❌'}</span>
 <span className="inscrito-remove" onClick={()=>remIns(pr.id,j.id)}>✕</span>
 </div>
@@ -3236,7 +3237,7 @@ if(!ins.find(i=>i.id===c.id)){addIns(pr.id,c);}
 {jugadores.filter(j=>!ins.find(i=>i.id===j.id)).map(j=>(
 <div key={j.id} className="checkbox-item" onClick={()=>addIns(pr.id,j)}>
 <div className="checkbox">+</div>
-<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</div></div>
+<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</div></div>
 </div>
 ))}
 </div>
@@ -3294,7 +3295,7 @@ return(
 <div className="grupo-jugadores">
 {g.jug.map(j=>(
 <div key={j.id} className={`jugador-chip ${g.adminId===j.id?'is-admin':''}`}>
-{g.adminId===j.id&&'👤 '}{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})
+{g.adminId===j.id&&'👤 '}{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})
 <span className="remove" onClick={()=>remJG(pr.id,g.id,j.id)}>×</span>
 </div>
 ))}
@@ -3308,7 +3309,7 @@ return(
 </div>}
 </div>
 );})}
-{sinA.length>0&&<><div className="section-title" style={{marginTop:20}}>Sin asignar ({sinA.length})</div>{sinA.map(j=><div key={j.id} className="inscrito-row"><div className="inscrito-avatar">{j.nombre.charAt(0)}</div><span className="inscrito-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span></div>)}</>}
+{sinA.length>0&&<><div className="section-title" style={{marginTop:20}}>Sin asignar ({sinA.length})</div>{sinA.map(j=><div key={j.id} className="inscrito-row"><div className="inscrito-avatar">{j.nombre.charAt(0)}</div><span className="inscrito-name">{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span></div>)}</>}
 </div>
 </div>
 );};
@@ -3359,7 +3360,7 @@ return(
 {jugadores.filter(j=>!ins.find(i=>i.id===j.id)).slice(0,6).map(j=>(
 <div key={j.id} className="checkbox-item" onClick={()=>addIns(ryder.id,j)}>
 <div className="checkbox">+</div>
-<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre}</div><div style={{fontSize:11,color:'#888'}}>Hcp {j.hcp}</div></div>
+<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre}</div><div style={{fontSize:11,color:'#888'}}>Hcp {j.esR?'+':''}{j.hcp}</div></div>
 </div>
 ))}
 </>):(<>
@@ -3507,7 +3508,7 @@ const pts=hoyo?stb(golpes,hoyo.p,extra):0;
 return(
 <div key={j.id} style={{background:'#fff',borderRadius:10,padding:14,marginBottom:10}}>
 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-<div><span style={{fontWeight:700}}>{j.nombre}</span><span style={{fontSize:11,color:'#888',marginLeft:8}}>Hcp {j.hcp}{extra>0?` (+${extra})`:''}</span></div>
+<div><span style={{fontWeight:700}}>{j.nombre}</span><span style={{fontSize:11,color:'#888',marginLeft:8}}>Hcp {j.esR?'+':''}{j.hcp}{extra!==0?` (${extra>0?'+':''}${extra})`:''}</span></div>
 <div style={{fontSize:12,color:'var(--pri)',fontWeight:700}}>{pts} pts</div>
 </div>
 <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:15}}>
@@ -3552,13 +3553,13 @@ return(
 <div key={eq.id} className="liv-pair">
 <div className="liv-pair-num">{idx+1}</div>
 <div className="liv-pair-players">
-{(eq.jug||[]).map(j=><div key={j.id} className="liv-player">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)}) <span style={{cursor:'pointer'}} onClick={()=>remJL(pr.id,eq.id,j.id)}>×</span></div>)}
+{(eq.jug||[]).map(j=><div key={j.id} className="liv-player">{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)}) <span style={{cursor:'pointer'}} onClick={()=>remJL(pr.id,eq.id,j.id)}>×</span></div>)}
 {(eq.jug||[]).length<2&&sinA.length>0&&<select className="form-select" style={{width:'auto',padding:'6px 10px',fontSize:12,background:'#ffebee'}} onChange={e=>{const jug=ins.find(j=>j.id===e.target.value);if(jug)addJL(pr.id,eq.id,jug);e.target.value='';}}><option value="">+ Añadir</option>{sinA.map(j=><option key={j.id} value={j.id}>{j.nombre}</option>)}</select>}
 </div>
 <span style={{color:'#c62828',cursor:'pointer'}} onClick={()=>remEL(pr.id,eq.id)}>🗑</span>
 </div>
 ))}
-{sinA.length>0&&<><div className="section-title" style={{marginTop:20}}>Sin equipo ({sinA.length})</div>{sinA.map(j=><div key={j.id} className="inscrito-row"><div className="inscrito-avatar">{j.nombre.charAt(0)}</div><span className="inscrito-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span></div>)}</>}
+{sinA.length>0&&<><div className="section-title" style={{marginTop:20}}>Sin equipo ({sinA.length})</div>{sinA.map(j=><div key={j.id} className="inscrito-row"><div className="inscrito-avatar">{j.nombre.charAt(0)}</div><span className="inscrito-name">{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span></div>)}</>}
 </div>
 </div>
 );};
@@ -3572,7 +3573,7 @@ const AdminJugadoresScr=()=>(
 <div key={j.id} className="card" onClick={()=>openEditJug(j)}>
 <div style={{display:'flex',alignItems:'center'}}>
 <div style={{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,var(--pri),var(--pri-l))',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,marginRight:12}}>{j.nombre.charAt(0)}</div>
-<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</div></div>
+<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</div></div>
 <span style={{color:'var(--pri)',fontSize:18}}>✏️</span>
 </div>
 </div>
@@ -3851,7 +3852,7 @@ return(
 </div>
 <div className="sec">
 <div className="lb"><div className="lb-hdr"><span className="lb-title">🏆 RESULTADO FINAL GLOBAL</span></div>
-{lbGlobal.map((j,i)=><div key={j.id} className="lb-row"><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span><span className="lb-thru">{j.hoyosJugados} hoyos</span><span className="lb-score">{j.totalPts}</span></div>)}
+{lbGlobal.map((j,i)=><div key={j.id} className="lb-row"><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span><span className="lb-thru">{j.hoyosJugados} hoyos</span><span className="lb-score">{j.totalPts}</span></div>)}
 </div>
 </div>
 </div>
@@ -3878,7 +3879,7 @@ const parHoyo=hoyoAct.p;
 return(
 <div key={j.id} className="player-score" style={{border:esPickUp?'2px solid #9e9e9e':tieneScore?'2px solid #4caf50':'2px solid #ffcc80',background:esPickUp?'#f5f5f5':tieneScore?'#e8f5e9':'#fff'}}>
 <div className="player-row">
-<div><span className="player-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span>{extra!==0&&<span className="player-extra">{extra>0?'+':''}{extra} golpe{Math.abs(extra)>1?'s':''}</span>}{tieneScore&&!esPickUp&&<span style={{marginLeft:8,color:'#4caf50'}}>✓</span>}{esPickUp&&<span style={{marginLeft:8,color:'#9e9e9e'}}>🏳️</span>}</div>
+<div><span className="player-name">{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span>{extra!==0&&<span className="player-extra">{extra>0?'+':''}{extra} golpe{Math.abs(extra)>1?'s':''}</span>}{tieneScore&&!esPickUp&&<span style={{marginLeft:8,color:'#4caf50'}}>✓</span>}{esPickUp&&<span style={{marginLeft:8,color:'#9e9e9e'}}>🏳️</span>}</div>
 <span className="player-total">{tot}</span>
 </div>
 {esPickUp?(
@@ -3981,7 +3982,7 @@ return(
 {lbTab==='ind'||lbLIV.length===0?(<div className="lb"><div className="lb-hdr"><span className="lb-title"><span className="live-dot"></span> LEADERBOARD GLOBAL</span><span style={{fontSize:10,opacity:.7}}>{lbGlobal.length} jugadores</span></div>
 {lbGlobal.length>0?lbGlobal.map((j,i)=>{
 const esDeEstaPartida=partidaActiva?.jug?.find(x=>x.id===j.id);
-return(<div key={j.id} className="lb-row" style={{background:esDeEstaPartida?'rgba(198,40,40,0.1)':'transparent'}}><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)}){esDeEstaPartida&&<span style={{marginLeft:4,fontSize:10}}>●</span>}</span><span className="lb-thru">Thru {j.hoyosJugados||'-'}</span><span className="lb-score">{j.totalPts}</span></div>);
+return(<div key={j.id} className="lb-row" style={{background:esDeEstaPartida?'rgba(198,40,40,0.1)':'transparent'}}><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {j.esR?'+':''}{j.hcp} ({j.esR?'+':''}{j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)}){esDeEstaPartida&&<span style={{marginLeft:4,fontSize:10}}>●</span>}</span><span className="lb-thru">Thru {j.hoyosJugados||'-'}</span><span className="lb-score">{j.totalPts}</span></div>);
 }):<div className="lb-row" style={{justifyContent:'center',color:'#888'}}>Sin datos</div>}
 </div>):(
 <div className="lb"><div className="lb-hdr" style={{background:'var(--danger)'}}><span className="lb-title"><span className="live-dot"></span> LEADERBOARD LIV</span><span style={{fontSize:10,opacity:.7}}>{lbLIV.length} equipos</span></div>
