@@ -217,7 +217,7 @@ const CLASIF=[{pos:1,nombre:'Rodiles',total:77},{pos:2,nombre:'Iñaki',total:71}
 const CLASIF_LIV=[{pos:1,nombre:'Abril',total:93},{pos:2,nombre:'Rodiles',total:82},{pos:3,nombre:'Alex',total:80},{pos:4,nombre:'Ricard',total:71},{pos:5,nombre:'Iñaki',total:68},{pos:6,nombre:'Ginés',total:59},{pos:7,nombre:'Chiky',total:59},{pos:8,nombre:'Pedro',total:58},{pos:9,nombre:'Diego',total:58},{pos:10,nombre:'Santi',total:53},{pos:11,nombre:'Durán',total:30},{pos:12,nombre:'Botella',total:18},{pos:13,nombre:'Tito Rubio',total:10}];
 
 // Handicaps actualizados post-Baviera (15/03/2026)
-const DATA_VERSION='2026-03-15-v6'; // v6 Rodiles +3 handicap
+const DATA_VERSION='2026-03-15-v7'; // v7 añadidas estadísticas LIV
 const JUG_INI=[{id:'rodiles',nombre:'Rodiles',hcp:-3,esR:true},{id:'titorubio',nombre:'Tito Rubio',hcp:3},{id:'ricard',nombre:'Ricard',hcp:7},{id:'alex',nombre:'Alex',hcp:7.5},{id:'santi',nombre:'Santi',hcp:8},{id:'inaki',nombre:'Iñaki',hcp:10},{id:'abril',nombre:'Abril',hcp:12},{id:'botella',nombre:'Botella',hcp:11},{id:'pedro',nombre:'Pedro',hcp:12.5},{id:'chiky',nombre:'Chiky',hcp:14},{id:'diego',nombre:'Diego',hcp:16},{id:'duran',nombre:'Durán',hcp:16},{id:'gines',nombre:'Ginés',hcp:18}];
 
 const CAL_INI=[
@@ -1696,13 +1696,64 @@ border:i===0?'2px solid #ffd54f':'1px solid #eee'
 <div style={{background:'#f5f5f5',borderRadius:10,padding:12,marginTop:15,fontSize:11,color:'#666'}}>
 <div style={{fontWeight:600,marginBottom:8}}>📋 Cómo se calcula:</div>
 <ul style={{margin:0,paddingLeft:20,lineHeight:1.6}}>
-<li><b>8 pruebas regulares</b>: media × 8</li>
-<li><b>División ÷2</b>: antes de finales todos los pts se dividen</li>
-<li><b>2 finales</b>: puntos dobles (media × 2 × 2)</li>
-<li><b>Proyección</b>: (actual + regulares)÷2 + finales</li>
-<li><b>Handicap</b>: factor de consistencia</li>
+<li><b>Proyección</b>: (actual + media×8)÷2 + media×4</li>
+<li><b>Probabilidad</b>: basada en distancia al líder</li>
 </ul>
 </div>
+
+{/* SECCIÓN LIV */}
+<div style={{background:'linear-gradient(135deg,#ff6f00,#ff9800)',borderRadius:12,padding:15,marginTop:20,marginBottom:15,color:'#fff'}}>
+<div style={{fontSize:13,fontWeight:700,marginBottom:5}}>⚡ Probabilidad de ganar el LIV</div>
+<div style={{fontSize:11,opacity:0.9}}>Competición por equipos de 2-3 jugadores</div>
+</div>
+
+{(()=>{
+// Calcular probabilidad LIV basada en CLASIF_LIV
+const livData=CLASIF_LIV.slice(0,5).map((c,i)=>{
+const s=stats.find(x=>x.nombre===c.nombre)||{mediaLiv:0,pruebasLiv:0};
+return{...c,...s,posLiv:i+1};
+});
+const lider=livData[0];
+const ESCALA=12;
+const conProb=livData.map(p=>{
+const gap=lider.total-p.total;
+const prob=Math.exp(-gap/ESCALA)*100;
+return{...p,gap,probRaw:prob};
+});
+const totalProb=conProb.reduce((s,p)=>s+p.probRaw,0);
+const probsLiv=conProb.map(p=>({...p,prob:Math.round((p.probRaw/totalProb)*1000)/10}));
+
+return probsLiv.map((s,i)=>(
+<div key={s.nombre} style={{
+background:i===0?'linear-gradient(135deg,#fff3e0,#ffe0b2)':i===1?'linear-gradient(135deg,#f5f5f5,#e0e0e0)':i===2?'linear-gradient(135deg,#ffecb3,#ffd54f)':'#fff',
+borderRadius:10,padding:12,marginBottom:8,
+boxShadow:i<3?'0 2px 8px rgba(0,0,0,0.1)':'0 1px 3px rgba(0,0,0,0.05)',
+border:i===0?'2px solid #ff9800':'1px solid #eee'
+}}>
+<div style={{display:'grid',gridTemplateColumns:'1fr 70px 70px',gap:8,alignItems:'center'}}>
+<div>
+<div style={{fontWeight:700,fontSize:14,display:'flex',alignItems:'center',gap:6}}>
+{i===0&&'🥇'}{i===1&&'🥈'}{i===2&&'🥉'}{s.nombre}
+</div>
+<div style={{fontSize:11,color:'#888',marginTop:2}}>
+{s.total} pts LIV • Media {s.mediaLiv||'-'}
+</div>
+</div>
+<div style={{textAlign:'center'}}>
+<div style={{fontWeight:700,fontSize:14,color:'#e65100'}}>{s.total}</div>
+<div style={{fontSize:9,color:'#888'}}>pts actual</div>
+</div>
+<div style={{textAlign:'right'}}>
+<div style={{fontWeight:700,fontSize:16,color:s.prob>=25?'#4caf50':s.prob>=15?'#ff9800':'#2196f3'}}>{s.prob}%</div>
+<div style={{height:4,background:'#e0e0e0',borderRadius:2,marginTop:4,overflow:'hidden'}}>
+<div style={{height:'100%',width:`${Math.min(100,s.prob*2)}%`,background:'#ff9800',borderRadius:2}}></div>
+</div>
+</div>
+</div>
+</div>
+));
+})()}
+
 </div>
 </div>
 );};
