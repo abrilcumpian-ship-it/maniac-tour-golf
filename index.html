@@ -284,9 +284,13 @@ const hcpJuego=j.esR?Math.floor(hcp):Math.ceil(hcp);
 return`${nombre} ${hcp} (${hcpJuego})`;
 };
 
-// Sistema de puntos por posición (índice 0 = 1º puesto)
+// Sistema de puntos por posición INDIVIDUAL (índice 0 = 1º puesto)
 const PUNTOS_POSICION=[15,12,10,9,8,7,6,5,4,3,2,1,0];
 const getPuntosPosicion=(pos)=>pos<=13?PUNTOS_POSICION[pos-1]:0;
+
+// Sistema de puntos por posición LIV: 1º=15, 2º=12, 3º=10, 4º=8, 5º=6
+const PUNTOS_LIV=[15,12,10,8,6,0,0,0,0,0];
+const getPuntosLiv=(pos)=>pos<=5?PUNTOS_LIV[pos-1]:0;
 
 // Ryder Cup - Puntuación ponderada para equilibrar equipos
 const calcPuntajeEquilibrio=(jug)=>{
@@ -506,6 +510,11 @@ const[hoyoEdicion,setHoyoEdicion]=useState(1);
 // Estados para resultados y asistencia a comida
 const[modoResultados,setModoResultados]=useState(false);
 const[asistenciaComida,setAsistenciaComida]=useState({});
+// Estado para Ricki's Corner (apuestas)
+const[apuestas,setApuestas]=useState(()=>{
+try{const saved=localStorage.getItem('maniac_apuestas');return saved?JSON.parse(saved):[];}catch(e){return [];}
+});
+const[nuevaApuesta,setNuevaApuesta]=useState({retador:'',retado:'',descripcion:'',monto:'',pruebaId:''});
 
 // Marcar cambios pendientes cuando se editen datos
 useEffect(()=>{setCambiosPendientes(true);},[viajeGastos,viajeViajeros,cal,scores,jugadores]);
@@ -1104,9 +1113,11 @@ return(
 <div className="sec"><div className="menu-grid">
 <button className="menu-item" onClick={()=>setScr('clasificacion')}><div className="menu-icon" style={{background:'#1a472a15'}}>🏆</div><span className="menu-label">Clasificación</span></button>
 <button className="menu-item" onClick={()=>setScr('calendario')}><div className="menu-icon" style={{background:'#2196f315'}}>📅</div><span className="menu-label">Calendario</span></button>
-<button className="menu-item" onClick={()=>setScr('historico')}><div className="menu-icon" style={{background:'#c9a22715'}}>📊</div><span className="menu-label">Histórico</span></button>
+<button className="menu-item" onClick={()=>setScr('historico')}><div className="menu-icon" style={{background:'#c9a22715'}}>🗂️</div><span className="menu-label">Histórico</span></button>
+<button className="menu-item" onClick={()=>setScr('estadisticas')}><div className="menu-icon" style={{background:'#1565c015'}}>📊</div><span className="menu-label">Estadísticas</span></button>
 <button className="menu-item" onClick={()=>setScr('jugadores')}><div className="menu-icon" style={{background:'#34495e15'}}>👥</div><span className="menu-label">Jugadores</span></button>
 <button className="menu-item" onClick={()=>setScr('live')}><div className="menu-icon" style={{background:'#c6282815'}}>📺</div><span className="menu-label">En Vivo</span></button>
+<button className="menu-item" onClick={()=>setScr('ricki')}><div className="menu-icon" style={{background:'#9c27b015'}}>🎰</div><span className="menu-label">Ricki's Corner</span></button>
 </div></div>
 <div className="sec">
 <div style={{background:'linear-gradient(135deg,#00897b,#26a69a)',borderRadius:14,padding:18,color:'#fff',cursor:'pointer',marginBottom:12}} onClick={()=>setScr('viaje')}>
@@ -1553,18 +1564,29 @@ const stats=React.useMemo(()=>calcEstadisticas(),[]);
 const probsInd=React.useMemo(()=>simularTemporada(stats,'ind',10000),[stats]);
 const probsLiv=React.useMemo(()=>simularTemporada(stats,'liv',10000),[stats]);
 
-// Combinar stats con probabilidades
-const dataInd=stats.map(s=>({
+// Combinar stats con probabilidades y filtrar <8%
+const filtrarYRecalcular=(statsData,probs)=>{
+const conProb=statsData.map(s=>({
 ...s,
-prob:probsInd.find(p=>p.nombre===s.nombre)?.prob||0
-})).sort((a,b)=>b.prob-a.prob);
-
-const dataLiv=stats.map(s=>({
+probOriginal:probs.find(p=>p.nombre===s.nombre)?.prob||0
+}));
+// Filtrar los que tienen >=8%
+const filtrados=conProb.filter(s=>s.probOriginal>=8);
+// Recalcular para que sumen 100%
+const totalProb=filtrados.reduce((sum,s)=>sum+s.probOriginal,0);
+return filtrados.map(s=>({
 ...s,
-prob:probsLiv.find(p=>p.nombre===s.nombre)?.prob||0
+prob:totalProb>0?Math.round((s.probOriginal/totalProb)*1000)/10:0
 })).sort((a,b)=>b.prob-a.prob);
+};
 
+const dataInd=filtrarYRecalcular(stats,probsInd);
+const dataLiv=filtrarYRecalcular(stats,probsLiv);
 const data=stab==='ind'?dataInd:dataLiv;
+
+// Contar excluidos
+const excluidosInd=stats.length-dataInd.length;
+const excluidosLiv=stats.length-dataLiv.length;
 
 const getTendIcon=(t)=>t>1?'📈':t<-1?'📉':'➡️';
 const getBarColor=(prob)=>{
@@ -1583,8 +1605,9 @@ return(
 </div>
 <div className="sec">
 <div style={{background:'linear-gradient(135deg,#1a237e,#3949ab)',borderRadius:12,padding:15,marginBottom:15,color:'#fff'}}>
-<div style={{fontSize:13,opacity:0.9,marginBottom:5}}>🎯 Probabilidad calculada con simulación Monte Carlo</div>
-<div style={{fontSize:11,opacity:0.7}}>Basada en: handicap, media de puntos, tendencia y participación ({stats[0]?.pruebasInd||0} pruebas jugadas, 8 restantes)</div>
+<div style={{fontSize:13,opacity:0.9,marginBottom:5}}>🎯 Probabilidad de ganar el Maniac Tour</div>
+<div style={{fontSize:11,opacity:0.7,marginBottom:4}}>Basada en: resultados, handicap, tendencia ({stats[0]?.pruebasInd||0} pruebas jugadas)</div>
+<div style={{fontSize:10,opacity:0.6}}>⚠️ Excluidos {stab==='ind'?excluidosInd:excluidosLiv} jugadores con &lt;8% probabilidad</div>
 </div>
 
 <div style={{fontSize:12,fontWeight:600,color:'#666',marginBottom:10,display:'grid',gridTemplateColumns:'1fr 55px 55px 70px',gap:8,padding:'0 5px'}}>
@@ -1633,11 +1656,11 @@ Hcp {s.hcp} • {stab==='ind'?s.pruebasInd:s.pruebasLiv} pruebas • {stab==='in
 <div style={{background:'#f5f5f5',borderRadius:10,padding:12,marginTop:15,fontSize:11,color:'#666'}}>
 <div style={{fontWeight:600,marginBottom:8}}>📋 Cómo se calcula la probabilidad:</div>
 <ul style={{margin:0,paddingLeft:20,lineHeight:1.6}}>
-<li><b>Media de puntos</b>: Promedio histórico en pruebas jugadas</li>
-<li><b>Tendencia</b>: Comparación últimas 3 pruebas vs anteriores</li>
-<li><b>Handicap</b>: Jugadores con mejor hcp son más consistentes</li>
-<li><b>Participación</b>: Más pruebas = predicción más fiable</li>
-<li><b>Simulación</b>: 10,000 escenarios de las 8 pruebas restantes</li>
+<li><b>Media de puntos</b>: Promedio stableford en pruebas jugadas</li>
+<li><b>Handicap</b>: Factor de consistencia según nivel</li>
+<li><b>Tendencia</b>: Evolución en últimas pruebas</li>
+<li><b>Filtro 8%</b>: Jugadores con &lt;8% se excluyen del cálculo</li>
+<li><b>Recálculo</b>: Los restantes se redistribuyen al 100%</li>
 </ul>
 </div>
 </div>
@@ -1775,6 +1798,92 @@ return(
 <div className="lb"><div className="lb-hdr"><span className="lb-title"><span className="live-dot"></span> LEADERBOARD</span></div>
 {lb.length?lb.map((j,i)=><div key={j.id} className="lb-row"><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre}</span><span className="lb-thru">Thru {j.hoyosJugados||'-'}</span><span className="lb-score">{j.totalPts}</span></div>):<div className="lb-row" style={{justifyContent:'center',color:'#888'}}>Esperando datos...</div>}
 </div>
+</div>
+</div>
+);};
+
+// RICKI'S CORNER - Apuestas
+const RickiScr=()=>{
+const pruebasPendientes=cal.filter(p=>!p.done);
+const crearApuesta=()=>{
+if(!nuevaApuesta.retador||!nuevaApuesta.retado||!nuevaApuesta.descripcion)return;
+const ap={id:Date.now(),retador:nuevaApuesta.retador,retado:nuevaApuesta.retado,descripcion:nuevaApuesta.descripcion,monto:nuevaApuesta.monto||'Honor',pruebaId:nuevaApuesta.pruebaId,estado:'pendiente',fecha:new Date().toISOString()};
+const nuevas=[...apuestas,ap];
+setApuestas(nuevas);
+localStorage.setItem('maniac_apuestas',JSON.stringify(nuevas));
+setNuevaApuesta({retador:'',retado:'',descripcion:'',monto:'',pruebaId:''});
+};
+const responderApuesta=(id,acepta)=>{
+const nuevas=apuestas.map(a=>a.id===id?{...a,estado:acepta?'aceptada':'rechazada'}:a);
+setApuestas(nuevas);
+localStorage.setItem('maniac_apuestas',JSON.stringify(nuevas));
+};
+const eliminarApuesta=(id)=>{
+const nuevas=apuestas.filter(a=>a.id!==id);
+setApuestas(nuevas);
+localStorage.setItem('maniac_apuestas',JSON.stringify(nuevas));
+};
+// Filtrar apuestas: solo mostrar de pruebas pendientes y no rechazadas
+const apuestasActivas=apuestas.filter(a=>{
+if(a.estado==='rechazada')return false;
+if(a.pruebaId){const pr=cal.find(p=>p.id===a.pruebaId);if(pr&&pr.done)return false;}
+return true;
+});
+return(
+<div className="scroll">
+<header className="hdr" style={{background:'linear-gradient(135deg,#9c27b0,#7b1fa2)'}}><button className="hdr-back" onClick={()=>setScr('home')}>←</button><h1>🎰 Ricki's Corner</h1></header>
+<div style={{background:'linear-gradient(135deg,#9c27b0,#ce93d8)',padding:20,color:'#fff',textAlign:'center'}}>
+<div style={{fontSize:14,opacity:.9}}>Apuestas entre jugadores</div>
+<div style={{fontSize:28,fontWeight:700,margin:'5px 0'}}>{apuestasActivas.length}</div>
+<div style={{fontSize:12}}>apuestas activas</div>
+</div>
+<div className="sec">
+<div className="section-title">➕ Nueva Apuesta</div>
+<div className="card" style={{padding:15}}>
+<select className="form-select" value={nuevaApuesta.retador} onChange={e=>setNuevaApuesta({...nuevaApuesta,retador:e.target.value})} style={{marginBottom:10}}>
+<option value="">Retador...</option>
+{jugadores.map(j=><option key={j.id} value={j.nombre}>{j.nombre}</option>)}
+</select>
+<select className="form-select" value={nuevaApuesta.retado} onChange={e=>setNuevaApuesta({...nuevaApuesta,retado:e.target.value})} style={{marginBottom:10}}>
+<option value="">Retado...</option>
+{jugadores.filter(j=>j.nombre!==nuevaApuesta.retador).map(j=><option key={j.id} value={j.nombre}>{j.nombre}</option>)}
+</select>
+<input type="text" className="form-input" placeholder="Descripción de la apuesta..." value={nuevaApuesta.descripcion} onChange={e=>setNuevaApuesta({...nuevaApuesta,descripcion:e.target.value})} style={{marginBottom:10}}/>
+<input type="text" className="form-input" placeholder="Monto (ej: 10€, cerveza...)" value={nuevaApuesta.monto} onChange={e=>setNuevaApuesta({...nuevaApuesta,monto:e.target.value})} style={{marginBottom:10}}/>
+<select className="form-select" value={nuevaApuesta.pruebaId} onChange={e=>setNuevaApuesta({...nuevaApuesta,pruebaId:e.target.value})} style={{marginBottom:10}}>
+<option value="">Prueba (opcional)...</option>
+{pruebasPendientes.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
+</select>
+<button className="btn" style={{background:'#9c27b0',width:'100%'}} onClick={crearApuesta}>🎲 Lanzar Apuesta</button>
+</div>
+</div>
+<div className="sec">
+<div className="section-title">📋 Apuestas Activas</div>
+{apuestasActivas.length===0&&<p style={{textAlign:'center',color:'#888',padding:20}}>No hay apuestas activas</p>}
+{apuestasActivas.map(a=>{
+const prueba=a.pruebaId?cal.find(p=>p.id===a.pruebaId):null;
+return(
+<div key={a.id} className="card" style={{marginBottom:12,borderLeft:`4px solid ${a.estado==='aceptada'?'#4caf50':a.estado==='pendiente'?'#ff9800':'#9e9e9e'}`}}>
+<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+<span style={{fontWeight:700,color:'#9c27b0'}}>{a.retador} vs {a.retado}</span>
+<span style={{fontSize:11,background:a.estado==='aceptada'?'#e8f5e9':a.estado==='pendiente'?'#fff3e0':'#f5f5f5',padding:'3px 8px',borderRadius:10}}>{a.estado==='aceptada'?'✅ Aceptada':a.estado==='pendiente'?'⏳ Pendiente':'❌ Rechazada'}</span>
+</div>
+<p style={{fontSize:14,marginBottom:6}}>{a.descripcion}</p>
+<div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'#666'}}>
+<span>💰 {a.monto||'Honor'}</span>
+{prueba&&<span>📍 {prueba.nombre}</span>}
+</div>
+{a.estado==='pendiente'&&(
+<div style={{display:'flex',gap:10,marginTop:12}}>
+<button className="btn btn-sec" style={{flex:1,background:'#4caf50',color:'#fff'}} onClick={()=>responderApuesta(a.id,true)}>✅ Aceptar</button>
+<button className="btn btn-sec" style={{flex:1,background:'#f44336',color:'#fff'}} onClick={()=>responderApuesta(a.id,false)}>❌ Rechazar</button>
+</div>
+)}
+{a.estado!=='pendiente'&&isAdmin&&(
+<button className="btn btn-sec" style={{marginTop:10,fontSize:11}} onClick={()=>eliminarApuesta(a.id)}>🗑️ Eliminar</button>
+)}
+</div>
+);})}
 </div>
 </div>
 );};
@@ -2311,7 +2420,8 @@ return(
 </div>
 <div style={{background:'#e8f5e9',borderRadius:10,padding:14,marginBottom:15}}>
 <p style={{fontSize:13,color:'#2e7d32',margin:0}}><b>📋 Resumen de puntos:</b></p>
-<p style={{fontSize:12,color:'#666',margin:'8px 0 0'}}>• Puntos por posición: 1º=15, 2º=12, 3º=10, 4º=9... hasta 12º=1</p>
+<p style={{fontSize:12,color:'#666',margin:'8px 0 0'}}>• Individual: 1º=15, 2º=12, 3º=10, 4º=9, 5º=8... hasta 12º=1</p>
+<p style={{fontSize:12,color:'#c62828',margin:'4px 0 0'}}>• LIV: 1º=15, 2º=12, 3º=10, 4º=8, 5º=6</p>
 <p style={{fontSize:12,color:'#666',margin:'4px 0 0'}}>• Asistencia a comida: +1 punto adicional</p>
 </div>
 <button className="btn btn-pri" style={{marginBottom:10}} onClick={()=>{if(confirm('¿Confirmar resultados y asistencia a comida?'))confirmarResultados();}}>✅ CONFIRMAR RESULTADOS</button>
@@ -2479,6 +2589,7 @@ return(
 {scr==='historico'&&!admScr&&<HistoricoScr/>}
 {scr==='detalle'&&<DetalleScr/>}
 {scr==='live'&&!admScr&&<LiveScr/>}
+{scr==='ricki'&&!admScr&&<RickiScr/>}
 {scr==='admin'&&!admScr&&<AdminScr/>}
 {scr==='scoring'&&<ScoringScr/>}
 {admScr==='inscritos'&&!selPrueba&&<AdminInsScr/>}
