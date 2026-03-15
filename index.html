@@ -334,10 +334,10 @@ return hist.reverse();
 const calcEstadisticas=()=>{
 const stats=[];
 const jugNombres=[...new Set(PRUEBAS_HIST.flatMap(p=>p.res.map(r=>r.nombre)))];
-const PRUEBAS_RESTANTES=8;
+// Pruebas restantes excluyendo finales y Ryder
+const PRUEBAS_RESTANTES=CAL_INI.filter(p=>!p.done&&!p.esFinal&&!p.esRyder).length;
 
 jugNombres.forEach(nombre=>{
-// Obtener datos del jugador
 const jugInfo=JUG_INI.find(j=>j.nombre===nombre)||{hcp:15};
 const hcp=jugInfo.hcp;
 
@@ -365,24 +365,18 @@ const pruebasInd=histInd.length;
 const pruebasLiv=histLiv.length;
 if(pruebasInd===0)return;
 
-// Calcular medias
+// Media de puntos por prueba
 const mediaInd=histInd.reduce((s,h)=>s+h.pts,0)/pruebasInd;
 const mediaStb=histInd.reduce((s,h)=>s+h.stb,0)/pruebasInd;
 const mediaLiv=pruebasLiv>0?histLiv.reduce((s,h)=>s+h.ptsLIV,0)/pruebasLiv:0;
 
-// Calcular desviación estándar
-const desviacionInd=Math.sqrt(histInd.reduce((s,h)=>s+Math.pow(h.pts-mediaInd,2),0)/pruebasInd);
-const desviacionLiv=pruebasLiv>0?Math.sqrt(histLiv.reduce((s,h)=>s+Math.pow(h.ptsLIV-mediaLiv,2),0)/pruebasLiv):5;
-
-// Calcular tendencia (últimas 3 pruebas vs anteriores)
+// Tendencia (últimas 2 vs anteriores)
 let tendenciaInd=0;
-if(pruebasInd>=3){
-const ultimas3=histInd.slice(-3);
-const anteriores=histInd.slice(0,-3);
+if(pruebasInd>=2){
+const ultimas=histInd.slice(-2);
+const anteriores=histInd.slice(0,-2);
 if(anteriores.length>0){
-const mediaUlt=ultimas3.reduce((s,h)=>s+h.pts,0)/3;
-const mediaAnt=anteriores.reduce((s,h)=>s+h.pts,0)/anteriores.length;
-tendenciaInd=mediaUlt-mediaAnt;
+tendenciaInd=(ultimas.reduce((s,h)=>s+h.pts,0)/2)-(anteriores.reduce((s,h)=>s+h.pts,0)/anteriores.length);
 }
 }
 
@@ -395,75 +389,64 @@ nombre,hcp,pruebasInd,pruebasLiv,
 mediaInd:Math.round(mediaInd*10)/10,
 mediaStb:Math.round(mediaStb*10)/10,
 mediaLiv:Math.round(mediaLiv*10)/10,
-desviacionInd:Math.round(desviacionInd*10)/10,
-desviacionLiv:Math.round(desviacionLiv*10)/10,
 tendenciaInd:Math.round(tendenciaInd*10)/10,
-totalInd,totalLiv
+totalInd,totalLiv,
+pruebasRestantes:PRUEBAS_RESTANTES
 });
 });
 return stats;
 };
 
-// Simulación Monte Carlo para probabilidades
-const simularTemporada=(stats,tipo='ind',numSim=10000)=>{
-const PRUEBAS_RESTANTES=8;
-const victorias={};
-stats.forEach(s=>victorias[s.nombre]=0);
+// Cálculo de probabilidad de victoria basado en proyección
+const calcularProbabilidades=(stats)=>{
+if(stats.length===0)return[];
+const PRUEBAS_RESTANTES=stats[0]?.pruebasRestantes||8;
 
-for(let sim=0;sim<numSim;sim++){
-const puntosFinales={};
-
-stats.forEach(s=>{
-// Puntos actuales
-let puntos=tipo==='ind'?s.totalInd:s.totalLiv;
-const media=tipo==='ind'?s.mediaInd:s.mediaLiv;
-const desv=tipo==='ind'?s.desviacionInd:s.desviacionLiv;
-const tendencia=tipo==='ind'?s.tendenciaInd:0;
-
-// Factor de handicap (jugadores con mejor hcp tienden a ser más consistentes)
-const factorHcp=1-(s.hcp/36)*0.2;
-
-// Factor de participación (más pruebas = más fiable la proyección)
-const factorPart=Math.min(1,(tipo==='ind'?s.pruebasInd:s.pruebasLiv)/6);
-
-// Simular cada prueba restante
-for(let p=0;p<PRUEBAS_RESTANTES;p++){
-// Generar puntos aleatorios con distribución normal aproximada
-const u1=Math.random(),u2=Math.random();
-const z=Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2);
-
-// Media ajustada por tendencia y factor de participación
-const mediaAjust=media+(tendencia*0.3*factorPart);
-// Desviación ajustada por handicap y participación
-const desvAjust=desv*(1.5-factorHcp*factorPart);
-
-let ptsPrueba=mediaAjust+z*desvAjust;
-// Limitar a rangos realistas
-if(tipo==='ind')ptsPrueba=Math.max(0,Math.min(16,ptsPrueba));
-else ptsPrueba=Math.max(0,Math.min(15,ptsPrueba));
-
-puntos+=ptsPrueba;
-}
-puntosFinales[s.nombre]=puntos;
+// Para cada jugador: proyectar puntos finales
+const proyecciones=stats.map(s=>{
+// Factor handicap: mejor hcp = más consistente (0.9 a 1.1)
+const factorHcp=1+((10-s.hcp)/50);
+// Factor tendencia: si va mejorando, proyecta mejor
+const factorTend=1+(s.tendenciaInd/20);
+// Puntos esperados por prueba ajustados
+const ptsEsperadosPrueba=s.mediaInd*factorHcp*factorTend;
+// Proyección final
+const proyeccionFinal=s.totalInd+(ptsEsperadosPrueba*PRUEBAS_RESTANTES);
+return{nombre:s.nombre,proyeccion:proyeccionFinal,media:s.mediaInd,hcp:s.hcp};
 });
 
-// Determinar ganador
-let ganador=null,maxPts=-1;
-Object.entries(puntosFinales).forEach(([nombre,pts])=>{
-if(pts>maxPts){maxPts=pts;ganador=nombre;}
-});
-if(ganador)victorias[ganador]++;
-}
+// Ordenar por proyección
+proyecciones.sort((a,b)=>b.proyeccion-a.proyeccion);
 
-// Calcular probabilidades
-const probs=[];
-stats.forEach(s=>{
-probs.push({
-nombre:s.nombre,
-prob:Math.round((victorias[s.nombre]/numSim)*1000)/10
+// Calcular diferencias con el líder y convertir a probabilidad
+const lider=proyecciones[0];
+const ptsPorPrueba=10; // Aprox puntos promedio por prueba
+const pruebasRest=PRUEBAS_RESTANTES;
+
+const conProb=proyecciones.map(p=>{
+const diffConLider=lider.proyeccion-p.proyeccion;
+// Probabilidad basada en cuántas pruebas necesita para remontar
+// Si está cerca del líder, más probabilidad
+const pruebasNecesarias=diffConLider/ptsPorPrueba;
+let prob;
+if(pruebasNecesarias<=0)prob=40; // Es el líder o está por delante
+else if(pruebasNecesarias<pruebasRest*0.3)prob=30;
+else if(pruebasNecesarias<pruebasRest*0.5)prob=20;
+else if(pruebasNecesarias<pruebasRest*0.7)prob=10;
+else if(pruebasNecesarias<pruebasRest)prob=5;
+else prob=2;
+// Ajuste por handicap (mejor jugador técnico tiene ventaja)
+prob*=(1+(10-p.hcp)/30);
+return{...p,probRaw:prob};
 });
-});
-return probs.sort((a,b)=>b.prob-a.prob);
+
+// Normalizar para que sumen 100
+const totalProb=conProb.reduce((s,p)=>s+p.probRaw,0);
+return conProb.map(p=>({
+nombre:p.nombre,
+prob:Math.round((p.probRaw/totalProb)*1000)/10,
+proyeccion:Math.round(p.proyeccion*10)/10
+})).sort((a,b)=>b.prob-a.prob);
 };
 
 const App=()=>{
@@ -1312,13 +1295,46 @@ campo&&campo.id!=='pendiente'&&<div style={{fontSize:11,color:'#888',marginTop:3
 <span>In: <strong>{campo.hoyos.slice(9,18).reduce((s,h)=>s+h.p,0)}</strong></span>
 </div>
 </div>
+{/* Sección confirmar asistencia */}
+<div style={{marginTop:15,borderTop:'1px solid #eee',paddingTop:15}}>
+<div style={{fontWeight:700,marginBottom:10,fontSize:13}}>✋ Confirmar Asistencia</div>
+<div style={{fontSize:12,color:'#666',marginBottom:10}}>Inscritos: {(p.ins||[]).length} jugadores</div>
+<div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+{jugadores.map(j=>{
+const inscrito=(p.ins||[]).some(x=>x.id===j.id);
+return(
+<button key={j.id} onClick={(e)=>{e.stopPropagation();inscrito?remIns(p.id,j.id):addIns(p.id,j);}} style={{
+padding:'8px 12px',borderRadius:20,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,
+background:inscrito?'linear-gradient(135deg,#4caf50,#66bb6a)':'#f0f0f0',
+color:inscrito?'#fff':'#666'
+}}>{inscrito?'✓':''} {j.nombre}</button>
+);})}
+</div>
+</div>
 </div>
 )}
 {selCampo===p.id&&(!campo||campo.id==='pendiente')&&(
-<div style={{marginTop:15,borderTop:'1px solid #eee',paddingTop:15,textAlign:'center',color:'#888'}}>
+<div style={{marginTop:15,borderTop:'1px solid #eee',paddingTop:15}}>
+<div style={{textAlign:'center',color:'#888',marginBottom:15}}>
 <div style={{fontSize:24,marginBottom:8}}>🏌️</div>
 <p style={{fontSize:12}}>Campo por confirmar</p>
-<p style={{fontSize:11}}>Los detalles se añadirán cuando se confirme el campo</p>
+</div>
+{/* Sección confirmar asistencia */}
+<div style={{borderTop:'1px solid #eee',paddingTop:15}}>
+<div style={{fontWeight:700,marginBottom:10,fontSize:13}}>✋ Confirmar Asistencia</div>
+<div style={{fontSize:12,color:'#666',marginBottom:10}}>Inscritos: {(p.ins||[]).length} jugadores</div>
+<div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+{jugadores.map(j=>{
+const inscrito=(p.ins||[]).some(x=>x.id===j.id);
+return(
+<button key={j.id} onClick={(e)=>{e.stopPropagation();inscrito?remIns(p.id,j.id):addIns(p.id,j);}} style={{
+padding:'8px 12px',borderRadius:20,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,
+background:inscrito?'linear-gradient(135deg,#4caf50,#66bb6a)':'#f0f0f0',
+color:inscrito?'#fff':'#666'
+}}>{inscrito?'✓':''} {j.nombre}</button>
+);})}
+</div>
+</div>
 </div>
 )}
 </div>
@@ -1571,33 +1587,26 @@ return(
 
 // ========== PANTALLA DE ESTADÍSTICAS ==========
 const EstadisticasScr=()=>{
-const[stab,setStab]=useState('ind');
 const stats=React.useMemo(()=>calcEstadisticas(),[]);
-const probsInd=React.useMemo(()=>simularTemporada(stats,'ind',10000),[stats]);
-const probsLiv=React.useMemo(()=>simularTemporada(stats,'liv',10000),[stats]);
+const probsInd=React.useMemo(()=>calcularProbabilidades(stats),[stats]);
 
-// Combinar stats con probabilidades - solo TOP 5
-const filtrarTop5=(statsData,probs)=>{
-const conProb=statsData.map(s=>({
+// Top 5 con probabilidades recalculadas al 100%
+const top5Data=React.useMemo(()=>{
+const top5=probsInd.slice(0,5);
+const totalProb=top5.reduce((sum,p)=>sum+p.prob,0);
+return top5.map(p=>{
+const s=stats.find(x=>x.nombre===p.nombre)||{};
+return{
 ...s,
-probOriginal:probs.find(p=>p.nombre===s.nombre)?.prob||0
-})).sort((a,b)=>b.probOriginal-a.probOriginal);
-// Tomar solo los 5 primeros
-const top5=conProb.slice(0,5);
-// Recalcular para que sumen 100%
-const totalProb=top5.reduce((sum,s)=>sum+s.probOriginal,0);
-return top5.map(s=>({
-...s,
-prob:totalProb>0?Math.round((s.probOriginal/totalProb)*1000)/10:0
-}));
+prob:totalProb>0?Math.round((p.prob/totalProb)*1000)/10:0,
+proyeccion:p.proyeccion
 };
+});
+},[probsInd,stats]);
 
-const dataInd=filtrarTop5(stats,probsInd);
-const dataLiv=filtrarTop5(stats,probsLiv);
-const data=stab==='ind'?dataInd:dataLiv;
+const data=top5Data;
 
 
-const getTendIcon=(t)=>t>1?'📈':t<-1?'📉':'➡️';
 const getBarColor=(prob)=>{
 if(prob>=30)return'#4caf50';
 if(prob>=15)return'#ff9800';
@@ -1605,25 +1614,22 @@ if(prob>=5)return'#2196f3';
 return'#9e9e9e';
 };
 
+const pruebasRest=stats[0]?.pruebasRestantes||8;
 return(
 <div className="scroll">
 <header className="hdr"><button className="hdr-back" onClick={()=>setScr('home')}>←</button><h1>📊 Estadísticas</h1></header>
-<div className="tabs">
-<button className={`tab ${stab==='ind'?'active':''}`} onClick={()=>setStab('ind')}>🏆 Individual</button>
-<button className={`tab ${stab==='liv'?'liv':''}`} onClick={()=>setStab('liv')}>⚡ LIV</button>
-</div>
 <div className="sec">
 <div style={{background:'linear-gradient(135deg,#1a237e,#3949ab)',borderRadius:12,padding:15,marginBottom:15,color:'#fff'}}>
 <div style={{fontSize:13,opacity:0.9,marginBottom:5}}>🎯 Probabilidad de ganar el Maniac Tour</div>
-<div style={{fontSize:11,opacity:0.7,marginBottom:4}}>Basada en: resultados, handicap, tendencia ({stats[0]?.pruebasInd||0} pruebas jugadas)</div>
-<div style={{fontSize:10,opacity:0.6}}>🏅 Top 5 candidatos con opciones reales</div>
+<div style={{fontSize:11,opacity:0.7,marginBottom:4}}>{stats[0]?.pruebasInd||0} pruebas jugadas • {pruebasRest} pruebas restantes</div>
+<div style={{fontSize:10,opacity:0.6}}>🏅 Top 5 candidatos (sin finales ni Ryder)</div>
 </div>
 
-<div style={{fontSize:12,fontWeight:600,color:'#666',marginBottom:10,display:'grid',gridTemplateColumns:'1fr 55px 55px 70px',gap:8,padding:'0 5px'}}>
+<div style={{fontSize:12,fontWeight:600,color:'#666',marginBottom:10,display:'grid',gridTemplateColumns:'1fr 50px 60px 70px',gap:8,padding:'0 5px'}}>
 <span>Jugador</span>
-<span style={{textAlign:'center'}}>Media</span>
-<span style={{textAlign:'center'}}>Tend.</span>
-<span style={{textAlign:'right'}}>Prob. Ganar</span>
+<span style={{textAlign:'center'}}>Hcp</span>
+<span style={{textAlign:'center'}}>Proy.</span>
+<span style={{textAlign:'right'}}>Prob.</span>
 </div>
 
 {data.map((s,i)=>(
@@ -1633,24 +1639,21 @@ borderRadius:10,padding:12,marginBottom:8,
 boxShadow:i<3?'0 2px 8px rgba(0,0,0,0.1)':'0 1px 3px rgba(0,0,0,0.05)',
 border:i===0?'2px solid #ffd54f':'1px solid #eee'
 }}>
-<div style={{display:'grid',gridTemplateColumns:'1fr 55px 55px 70px',gap:8,alignItems:'center'}}>
+<div style={{display:'grid',gridTemplateColumns:'1fr 50px 60px 70px',gap:8,alignItems:'center'}}>
 <div>
 <div style={{fontWeight:700,fontSize:14,display:'flex',alignItems:'center',gap:6}}>
 {i===0&&'🥇'}{i===1&&'🥈'}{i===2&&'🥉'}{s.nombre}
 </div>
 <div style={{fontSize:11,color:'#888',marginTop:2}}>
-Hcp {s.hcp} • {stab==='ind'?s.pruebasInd:s.pruebasLiv} pruebas • {stab==='ind'?s.totalInd:s.totalLiv} pts
+{s.pruebasInd} pruebas • {s.totalInd} pts actuales • Media {s.mediaInd}
 </div>
 </div>
 <div style={{textAlign:'center'}}>
-<div style={{fontWeight:700,fontSize:15,color:'#1565c0'}}>{stab==='ind'?s.mediaInd:s.mediaLiv}</div>
-<div style={{fontSize:10,color:'#888'}}>pts/prueba</div>
+<div style={{fontWeight:700,fontSize:14,color:'#666'}}>{s.hcp}</div>
 </div>
 <div style={{textAlign:'center'}}>
-<div style={{fontSize:18}}>{getTendIcon(s.tendenciaInd)}</div>
-<div style={{fontSize:10,color:s.tendenciaInd>0?'#4caf50':s.tendenciaInd<0?'#f44336':'#888'}}>
-{s.tendenciaInd>0?'+':''}{s.tendenciaInd}
-</div>
+<div style={{fontWeight:700,fontSize:14,color:'#1565c0'}}>{s.proyeccion}</div>
+<div style={{fontSize:9,color:'#888'}}>pts final</div>
 </div>
 <div style={{textAlign:'right'}}>
 <div style={{fontWeight:700,fontSize:16,color:getBarColor(s.prob)}}>{s.prob}%</div>
@@ -1663,13 +1666,13 @@ Hcp {s.hcp} • {stab==='ind'?s.pruebasInd:s.pruebasLiv} pruebas • {stab==='in
 ))}
 
 <div style={{background:'#f5f5f5',borderRadius:10,padding:12,marginTop:15,fontSize:11,color:'#666'}}>
-<div style={{fontWeight:600,marginBottom:8}}>📋 Cómo se calcula la probabilidad:</div>
+<div style={{fontWeight:600,marginBottom:8}}>📋 Cómo se calcula:</div>
 <ul style={{margin:0,paddingLeft:20,lineHeight:1.6}}>
-<li><b>Media de puntos</b>: Promedio stableford en pruebas jugadas</li>
-<li><b>Handicap</b>: Factor de consistencia según nivel</li>
-<li><b>Tendencia</b>: Evolución en últimas pruebas</li>
-<li><b>Top 5</b>: Solo los 5 con más opciones</li>
-<li><b>Recálculo</b>: Probabilidades redistribuidas al 100%</li>
+<li><b>Media</b>: Puntos promedio por prueba jugada</li>
+<li><b>Handicap</b>: Mejor hcp = más consistencia</li>
+<li><b>Tendencia</b>: Si mejora → más puntos esperados</li>
+<li><b>Proyección</b>: Pts actuales + (media × {pruebasRest} restantes)</li>
+<li><b>Top 5</b>: Probabilidades redistribuidas al 100%</li>
 </ul>
 </div>
 </div>
@@ -1841,7 +1844,7 @@ return true;
 });
 return(
 <div className="scroll">
-<header className="hdr" style={{background:'linear-gradient(135deg,#9c27b0,#7b1fa2)'}}><button className="hdr-back" onClick={()=>setScr('home')}>←</button><h1>🎰 Ricki's Corner</h1></header>
+<header className="hdr" style={{background:'linear-gradient(135deg,#9c27b0,#7b1fa2)'}}><button className="hdr-back" onClick={(e)=>{e.preventDefault();e.stopPropagation();setScr('home');}}>←</button><h1>🎰 Ricki's Corner</h1></header>
 <div style={{background:'linear-gradient(135deg,#9c27b0,#ce93d8)',padding:20,color:'#fff',textAlign:'center'}}>
 <div style={{fontSize:14,opacity:.9}}>Apuestas entre jugadores</div>
 <div style={{fontSize:28,fontWeight:700,margin:'5px 0'}}>{apuestasActivas.length}</div>
