@@ -217,7 +217,7 @@ const CLASIF=[{pos:1,nombre:'Rodiles',total:77},{pos:2,nombre:'Iñaki',total:71}
 const CLASIF_LIV=[{pos:1,nombre:'Abril',total:93},{pos:2,nombre:'Rodiles',total:82},{pos:3,nombre:'Alex',total:80},{pos:4,nombre:'Ricard',total:71},{pos:5,nombre:'Iñaki',total:68},{pos:6,nombre:'Ginés',total:59},{pos:7,nombre:'Chiky',total:59},{pos:8,nombre:'Pedro',total:58},{pos:9,nombre:'Diego',total:58},{pos:10,nombre:'Santi',total:53},{pos:11,nombre:'Durán',total:30},{pos:12,nombre:'Botella',total:18},{pos:13,nombre:'Tito Rubio',total:10}];
 
 // Handicaps actualizados post-Baviera (15/03/2026)
-const DATA_VERSION='2026-03-15-v3'; // v3 fuerza actualización
+const DATA_VERSION='2026-03-15-v4'; // v4 fuerza actualización desde Firebase
 const JUG_INI=[{id:'rodiles',nombre:'Rodiles',hcp:3,esR:true},{id:'titorubio',nombre:'Tito Rubio',hcp:3},{id:'ricard',nombre:'Ricard',hcp:7},{id:'alex',nombre:'Alex',hcp:7.5},{id:'santi',nombre:'Santi',hcp:8},{id:'inaki',nombre:'Iñaki',hcp:10},{id:'abril',nombre:'Abril',hcp:12},{id:'botella',nombre:'Botella',hcp:11},{id:'pedro',nombre:'Pedro',hcp:12.5},{id:'chiky',nombre:'Chiky',hcp:14},{id:'diego',nombre:'Diego',hcp:16},{id:'duran',nombre:'Durán',hcp:16},{id:'gines',nombre:'Ginés',hcp:18}];
 
 const CAL_INI=[
@@ -549,7 +549,15 @@ return fromFB?{...fromFB,done:ini.done||fromFB.done}:ini;
 setCal(calMerged);
 }
 if(datos.scores)setScores(datos.scores);
-if(datos.jugadores)setJugadores(datos.jugadores);
+// Verificar versión: si cambió, usar JUG_INI con handicaps actualizados
+if(datos.jugadores){
+const fbVersion=datos.dataVersion||'';
+if(fbVersion!==DATA_VERSION){
+setJugadores(JUG_INI);
+}else{
+setJugadores(datos.jugadores);
+}
+}
 if(datos.ultimaActualizacion)setUltimaActLocal(datos.ultimaActualizacion);
 });
 }
@@ -573,9 +581,11 @@ const ejecutarGuardado=()=>{
 const timestamp=new Date().toISOString();
 const datos=datosOverride||{
 viajeGastos,viajeViajeros,cal,scores,jugadores,
-ultimaActualizacion:timestamp
+ultimaActualizacion:timestamp,
+dataVersion:DATA_VERSION
 };
 datos.ultimaActualizacion=timestamp;
+datos.dataVersion=DATA_VERSION;
 // Marcar que estamos guardando para ignorar actualizaciones entrantes
 guardandoRef.current=true;
 setGuardandoFirebase(true);
