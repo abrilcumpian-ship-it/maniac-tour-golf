@@ -218,6 +218,7 @@ const CLASIF_LIV=[{pos:1,nombre:'Abril',total:93},{pos:2,nombre:'Rodiles',total:
 
 // Handicaps actualizados post-Baviera (14/03/2026)
 // Iñaki ganó (35stb) → -0.5 | <30stb: Rodiles(28), Abril(29), Santi(24), Diego(23), Chiky(20), Ginés(19) → +0.5
+const DATA_VERSION='2026-03-15-v2'; // Cambiar versión fuerza actualización de handicaps
 const JUG_INI=[{id:'rodiles',nombre:'Rodiles',hcp:3,esR:true},{id:'titorubio',nombre:'Tito Rubio',hcp:3},{id:'ricard',nombre:'Ricard',hcp:6.5},{id:'alex',nombre:'Alex',hcp:7.5},{id:'santi',nombre:'Santi',hcp:9.5},{id:'inaki',nombre:'Iñaki',hcp:10},{id:'abril',nombre:'Abril',hcp:13},{id:'botella',nombre:'Botella',hcp:11},{id:'pedro',nombre:'Pedro',hcp:12.5},{id:'chiky',nombre:'Chiky',hcp:15},{id:'diego',nombre:'Diego',hcp:17},{id:'duran',nombre:'Durán',hcp:16},{id:'gines',nombre:'Ginés',hcp:18}];
 
 const CAL_INI=[
@@ -399,65 +400,55 @@ pruebasRestantes:PRUEBAS_RESTANTES
 return stats;
 };
 
-// Cálculo de probabilidad de victoria basado en proyección
-// PONDERACIÓN: Puntos actuales (60%) + Progresión/Tendencia (30%) + Handicap (10%)
-// REGLA MAYACOBA: Antes de las 2 finales los puntos se dividen por 2, cada final da puntos dobles
+// Cálculo de probabilidad de victoria - LÓGICA SIMPLE Y CLARA
+// Basado en: puntos actuales + media de puntos por prueba × pruebas restantes
+// REGLA MAYACOBA: pts÷2 antes de finales, finales dan pts×2
 const calcularProbabilidades=(stats)=>{
 if(stats.length===0)return[];
-const PRUEBAS_REGULARES=8; // Arcos, Gaucín×2, Mallorca×2, Julio, Sept, Oct
-const PRUEBAS_FINALES=2; // Final 1, Final 2 en Mayacoba
+const PRUEBAS_RESTANTES=8; // Arcos, Gaucín×2, Mallorca×2, Julio, Sept, Oct
 
-// Para cada jugador: proyectar puntos finales
+// Proyección simple: puntos actuales + (media × pruebas restantes)
 const proyecciones=stats.map(s=>{
-// Factor progresión/tendencia: PESO ALTO (30%)
-// Tendencia positiva = jugando mejor recientemente
-const factorTend=1+(s.tendenciaInd/8); // Aumentado de /20 a /8 para más peso
-// Factor handicap: peso bajo (10%)
-const factorHcp=1+((10-s.hcp)/100); // Reducido de /50 a /100
-// Puntos esperados por prueba (basado en media + tendencia principalmente)
-const ptsEsperadosPrueba=s.mediaInd*factorTend*factorHcp;
+// Puntos que ganará en pruebas regulares restantes (basado en su media)
+const ptsRegulares=s.mediaInd*PRUEBAS_RESTANTES;
+// Total antes de Mayacoba
+const totalAntesFinales=s.totalInd+ptsRegulares;
+// Regla Mayacoba: dividir por 2
+const ptsTrasDivision=totalAntesFinales/2;
+// Finales: cada una da el doble de puntos (2 finales × media × 2)
+const ptsFinales=s.mediaInd*2*2;
+// Proyección final
+const proyeccion=ptsTrasDivision+ptsFinales;
 
-// 1. Puntos acumulados después de pruebas regulares
-const ptsDespuesRegulares=s.totalInd+(ptsEsperadosPrueba*PRUEBAS_REGULARES);
-// 2. Antes de finales en Mayacoba: dividir por 2
-const ptsAntesFinales=ptsDespuesRegulares/2;
-// 3. Cada prueba en Mayacoba suma el doble de puntos
-const ptsFinales=ptsEsperadosPrueba*2*PRUEBAS_FINALES;
-// 4. Proyección total final
-const proyeccionFinal=ptsAntesFinales+ptsFinales;
-
-return{nombre:s.nombre,proyeccion:proyeccionFinal,ptsActuales:s.totalInd,media:s.mediaInd,hcp:s.hcp,tendencia:s.tendenciaInd};
+return{
+nombre:s.nombre,
+proyeccion:Math.round(proyeccion*10)/10,
+ptsActuales:s.totalInd,
+media:s.mediaInd,
+tendencia:s.tendenciaInd
+};
 });
 
-// Ordenar por proyección
+// Ordenar por proyección (quien más puntos proyectados, más probabilidad)
 proyecciones.sort((a,b)=>b.proyeccion-a.proyeccion);
 
-// Calcular probabilidad basada en puntos actuales y proyección
-const lider=proyecciones[0];
-const ptsPorPruebaFinal=20;
-
+// Probabilidad proporcional a la proyección
+const totalProy=proyecciones.reduce((s,p)=>s+p.proyeccion,0);
 const conProb=proyecciones.map(p=>{
-const diffConLider=lider.proyeccion-p.proyeccion;
-const pruebasNecesarias=diffConLider/ptsPorPruebaFinal;
-let prob;
-if(pruebasNecesarias<=0)prob=35;
-else if(pruebasNecesarias<0.5)prob=28;
-else if(pruebasNecesarias<1)prob=22;
-else if(pruebasNecesarias<1.5)prob=15;
-else if(pruebasNecesarias<2)prob=8;
-else prob=3;
-// Ajuste por tendencia (quien mejora tiene más opciones)
-if(p.tendencia>0)prob*=(1+p.tendencia/10);
-else if(p.tendencia<0)prob*=(1+p.tendencia/15);
+// Probabilidad base proporcional a proyección
+let prob=(p.proyeccion/totalProy)*100;
+// Bonus por tendencia positiva (jugando mejor últimamente)
+if(p.tendencia>0)prob*=(1+p.tendencia/15);
+else if(p.tendencia<0)prob*=(1+p.tendencia/20);
 return{...p,probRaw:prob};
 });
 
-// Normalizar para que sumen 100
+// Normalizar al 100%
 const totalProb=conProb.reduce((s,p)=>s+p.probRaw,0);
 return conProb.map(p=>({
 nombre:p.nombre,
 prob:Math.round((p.probRaw/totalProb)*1000)/10,
-proyeccion:Math.round(p.proyeccion*10)/10
+proyeccion:p.proyeccion
 })).sort((a,b)=>b.prob-a.prob);
 };
 
@@ -467,8 +458,18 @@ const[isAdmin,setIsAdmin]=useState(false);
 const[showLogin,setShowLogin]=useState(false);
 const[showPartidaLogin,setShowPartidaLogin]=useState(false);
 // Estados con persistencia en localStorage
+// Verificar versión para forzar actualización de handicaps
 const[jugadores,setJugadores]=useState(()=>{
-try{const saved=localStorage.getItem('maniac_jugadores');return saved?JSON.parse(saved):JUG_INI;}catch(e){return JUG_INI;}
+try{
+const savedVersion=localStorage.getItem('maniac_data_version');
+if(savedVersion!==DATA_VERSION){
+localStorage.setItem('maniac_data_version',DATA_VERSION);
+localStorage.setItem('maniac_jugadores',JSON.stringify(JUG_INI));
+return JUG_INI;
+}
+const saved=localStorage.getItem('maniac_jugadores');
+return saved?JSON.parse(saved):JUG_INI;
+}catch(e){return JUG_INI;}
 });
 const[editJug,setEditJug]=useState(null);
 const[showEditModal,setShowEditModal]=useState(false);
