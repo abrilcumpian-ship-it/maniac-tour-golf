@@ -217,7 +217,8 @@ const CLASIF=[{pos:1,nombre:'Rodiles',total:77},{pos:2,nombre:'Iñaki',total:71}
 const CLASIF_LIV=[{pos:1,nombre:'Abril',total:93},{pos:2,nombre:'Rodiles',total:82},{pos:3,nombre:'Alex',total:80},{pos:4,nombre:'Ricard',total:71},{pos:5,nombre:'Iñaki',total:68},{pos:6,nombre:'Ginés',total:59},{pos:7,nombre:'Chiky',total:59},{pos:8,nombre:'Pedro',total:58},{pos:9,nombre:'Diego',total:58},{pos:10,nombre:'Santi',total:53},{pos:11,nombre:'Durán',total:30},{pos:12,nombre:'Botella',total:18},{pos:13,nombre:'Tito Rubio',total:10}];
 
 // Handicaps actualizados post-Baviera (14/03/2026)
-const JUG_INI=[{id:'rodiles',nombre:'Rodiles',hcp:2,esR:true},{id:'titorubio',nombre:'Tito Rubio',hcp:3},{id:'ricard',nombre:'Ricard',hcp:6.5},{id:'alex',nombre:'Alex',hcp:7.5},{id:'santi',nombre:'Santi',hcp:9.5},{id:'inaki',nombre:'Iñaki',hcp:10.5},{id:'abril',nombre:'Abril',hcp:13},{id:'botella',nombre:'Botella',hcp:11},{id:'pedro',nombre:'Pedro',hcp:12.5},{id:'chiky',nombre:'Chiky',hcp:15},{id:'diego',nombre:'Diego',hcp:17},{id:'duran',nombre:'Durán',hcp:16},{id:'gines',nombre:'Ginés',hcp:18}];
+// Iñaki ganó (35stb) → -0.5 | <30stb: Rodiles(28), Abril(29), Santi(24), Diego(23), Chiky(20), Ginés(19) → +0.5
+const JUG_INI=[{id:'rodiles',nombre:'Rodiles',hcp:3,esR:true},{id:'titorubio',nombre:'Tito Rubio',hcp:3},{id:'ricard',nombre:'Ricard',hcp:6.5},{id:'alex',nombre:'Alex',hcp:7.5},{id:'santi',nombre:'Santi',hcp:9.5},{id:'inaki',nombre:'Iñaki',hcp:10},{id:'abril',nombre:'Abril',hcp:13},{id:'botella',nombre:'Botella',hcp:11},{id:'pedro',nombre:'Pedro',hcp:12.5},{id:'chiky',nombre:'Chiky',hcp:15},{id:'diego',nombre:'Diego',hcp:17},{id:'duran',nombre:'Durán',hcp:16},{id:'gines',nombre:'Ginés',hcp:18}];
 
 const CAL_INI=[
 {id:'hacienda26',nombre:'La Hacienda',fecha:'2026-02-14',campoId:'hacienda',done:true,ins:[],grp:[],eqLIV:[],histPartidas:[['Ricard','Diego','Ginés','Abril'],['Chiky','Santi','Pedro'],['Iñaki','Alex','Rodiles']]},
@@ -399,11 +400,11 @@ return stats;
 };
 
 // Cálculo de probabilidad de victoria basado en proyección
-// REGLA ESPECIAL: Antes de finales pts÷2, finales dan pts×2
+// REGLA MAYACOBA: Antes de las 2 finales los puntos se dividen por 2, cada final da puntos dobles
 const calcularProbabilidades=(stats)=>{
 if(stats.length===0)return[];
 const PRUEBAS_REGULARES=8; // Arcos, Gaucín×2, Mallorca×2, Julio, Sept, Oct
-const PRUEBAS_FINALES=2; // Final 1, Final 2
+const PRUEBAS_FINALES=2; // Final 1, Final 2 en Mayacoba
 
 // Para cada jugador: proyectar puntos finales
 const proyecciones=stats.map(s=>{
@@ -414,13 +415,13 @@ const factorTend=1+(s.tendenciaInd/20);
 // Puntos esperados por prueba ajustados
 const ptsEsperadosPrueba=s.mediaInd*factorHcp*factorTend;
 
-// 1. Puntos después de pruebas regulares
+// 1. Puntos acumulados después de pruebas regulares
 const ptsDespuesRegulares=s.totalInd+(ptsEsperadosPrueba*PRUEBAS_REGULARES);
-// 2. Antes de finales: dividir por 2
+// 2. Antes de finales en Mayacoba: dividir por 2
 const ptsAntesFinales=ptsDespuesRegulares/2;
-// 3. Finales: puntos dobles (media×2 por cada final)
+// 3. Cada prueba en Mayacoba suma el doble de puntos
 const ptsFinales=ptsEsperadosPrueba*2*PRUEBAS_FINALES;
-// 4. Proyección total
+// 4. Proyección total final
 const proyeccionFinal=ptsAntesFinales+ptsFinales;
 
 return{nombre:s.nombre,proyeccion:proyeccionFinal,ptsActuales:s.totalInd,media:s.mediaInd,hcp:s.hcp};
