@@ -217,7 +217,7 @@ const CLASIF=[{pos:1,nombre:'Rodiles',total:77},{pos:2,nombre:'Iñaki',total:71}
 const CLASIF_LIV=[{pos:1,nombre:'Abril',total:93},{pos:2,nombre:'Rodiles',total:82},{pos:3,nombre:'Alex',total:80},{pos:4,nombre:'Ricard',total:71},{pos:5,nombre:'Iñaki',total:68},{pos:6,nombre:'Ginés',total:59},{pos:7,nombre:'Chiky',total:59},{pos:8,nombre:'Pedro',total:58},{pos:9,nombre:'Diego',total:58},{pos:10,nombre:'Santi',total:53},{pos:11,nombre:'Durán',total:30},{pos:12,nombre:'Botella',total:18},{pos:13,nombre:'Tito Rubio',total:10}];
 
 // Handicaps actualizados post-Baviera (15/03/2026)
-const DATA_VERSION='2026-03-15-v4'; // v4 fuerza actualización desde Firebase
+const DATA_VERSION='2026-03-15-v5'; // v5 estadísticas corregidas
 const JUG_INI=[{id:'rodiles',nombre:'Rodiles',hcp:3,esR:true},{id:'titorubio',nombre:'Tito Rubio',hcp:3},{id:'ricard',nombre:'Ricard',hcp:7},{id:'alex',nombre:'Alex',hcp:7.5},{id:'santi',nombre:'Santi',hcp:8},{id:'inaki',nombre:'Iñaki',hcp:10},{id:'abril',nombre:'Abril',hcp:12},{id:'botella',nombre:'Botella',hcp:11},{id:'pedro',nombre:'Pedro',hcp:12.5},{id:'chiky',nombre:'Chiky',hcp:14},{id:'diego',nombre:'Diego',hcp:16},{id:'duran',nombre:'Durán',hcp:16},{id:'gines',nombre:'Ginés',hcp:18}];
 
 const CAL_INI=[
@@ -399,24 +399,25 @@ pruebasRestantes:PRUEBAS_RESTANTES
 return stats;
 };
 
-// Cálculo de probabilidad de victoria - LÓGICA SIMPLE Y CLARA
-// Basado en: puntos actuales + media de puntos por prueba × pruebas restantes
+// Cálculo de probabilidad de victoria
+// LÓGICA: Basada en diferencia con el líder proyectado
+// Quien lidera tiene más probabilidad, y baja exponencialmente con la distancia
 // REGLA MAYACOBA: pts÷2 antes de finales, finales dan pts×2
 const calcularProbabilidades=(stats)=>{
 if(stats.length===0)return[];
-const PRUEBAS_RESTANTES=8; // Arcos, Gaucín×2, Mallorca×2, Julio, Sept, Oct
+const PRUEBAS_REG=8; // Arcos, Gaucín×2, Mallorca×2, Julio, Sept, Oct
 
-// Proyección simple: puntos actuales + (media × pruebas restantes)
+// 1. Calcular proyección final para cada jugador
 const proyecciones=stats.map(s=>{
-// Puntos que ganará en pruebas regulares restantes (basado en su media)
-const ptsRegulares=s.mediaInd*PRUEBAS_RESTANTES;
-// Total antes de Mayacoba
+// Puntos en pruebas regulares restantes (basado en media histórica)
+const ptsRegulares=s.mediaInd*PRUEBAS_REG;
+// Total antes de Mayacoba = actuales + regulares restantes
 const totalAntesFinales=s.totalInd+ptsRegulares;
-// Regla Mayacoba: dividir por 2
+// Regla Mayacoba: todo se divide por 2 antes de finales
 const ptsTrasDivision=totalAntesFinales/2;
-// Finales: cada una da el doble de puntos (2 finales × media × 2)
+// Finales: 2 pruebas × media × 2 (puntos dobles)
 const ptsFinales=s.mediaInd*2*2;
-// Proyección final
+// Proyección total
 const proyeccion=ptsTrasDivision+ptsFinales;
 
 return{
@@ -428,26 +429,31 @@ tendencia:s.tendenciaInd
 };
 });
 
-// Ordenar por proyección (quien más puntos proyectados, más probabilidad)
+// 2. Ordenar por proyección
 proyecciones.sort((a,b)=>b.proyeccion-a.proyeccion);
+const lider=proyecciones[0];
 
-// Probabilidad proporcional a la proyección
-const totalProy=proyecciones.reduce((s,p)=>s+p.proyeccion,0);
+// 3. Calcular probabilidad basada en DISTANCIA al líder
+// Usar decaimiento exponencial: prob = e^(-gap/escala)
+// Escala = 15 puntos (a 15 pts de distancia, probabilidad baja ~37%)
+const ESCALA=15;
 const conProb=proyecciones.map(p=>{
-// Probabilidad base proporcional a proyección
-let prob=(p.proyeccion/totalProy)*100;
-// Bonus por tendencia positiva (jugando mejor últimamente)
-if(p.tendencia>0)prob*=(1+p.tendencia/15);
-else if(p.tendencia<0)prob*=(1+p.tendencia/20);
-return{...p,probRaw:prob};
+const gap=lider.proyeccion-p.proyeccion;
+// Probabilidad base: decae exponencialmente con la distancia
+let prob=Math.exp(-gap/ESCALA)*100;
+// Bonus/penalización por tendencia reciente (±20% máx)
+if(p.tendencia>0)prob*=(1+Math.min(p.tendencia,3)/15);
+else if(p.tendencia<0)prob*=(1+Math.max(p.tendencia,-3)/15);
+return{...p,gap:Math.round(gap*10)/10,probRaw:Math.max(prob,0.1)};
 });
 
-// Normalizar al 100%
+// 4. Normalizar al 100%
 const totalProb=conProb.reduce((s,p)=>s+p.probRaw,0);
 return conProb.map(p=>({
 nombre:p.nombre,
 prob:Math.round((p.probRaw/totalProb)*1000)/10,
-proyeccion:p.proyeccion
+proyeccion:p.proyeccion,
+gap:p.gap
 })).sort((a,b)=>b.prob-a.prob);
 };
 
