@@ -514,7 +514,6 @@ const[asistenciaComida,setAsistenciaComida]=useState({});
 const[apuestas,setApuestas]=useState(()=>{
 try{const saved=localStorage.getItem('maniac_apuestas');return saved?JSON.parse(saved):[];}catch(e){return [];}
 });
-const[nuevaApuesta,setNuevaApuesta]=useState({retador:'',retado:'',descripcion:'',monto:'',pruebaId:''});
 
 // Marcar cambios pendientes cuando se editen datos
 useEffect(()=>{setCambiosPendientes(true);},[viajeGastos,viajeViajeros,cal,scores,jugadores]);
@@ -546,7 +545,14 @@ requestAnimationFrame(()=>{
 if(!mounted)return;
 if(datos.viajeGastos)setViajeGastos(datos.viajeGastos);
 if(datos.viajeViajeros)setViajeViajeros(datos.viajeViajeros);
-if(datos.cal)setCal(datos.cal);
+if(datos.cal){
+// Merge con CAL_INI para preservar done:true de pruebas ya jugadas
+const calMerged=CAL_INI.map(ini=>{
+const fromFB=datos.cal.find(c=>c.id===ini.id);
+return fromFB?{...fromFB,done:ini.done||fromFB.done}:ini;
+});
+setCal(calMerged);
+}
 if(datos.scores)setScores(datos.scores);
 if(datos.jugadores)setJugadores(datos.jugadores);
 if(datos.ultimaActualizacion)setUltimaActLocal(datos.ultimaActualizacion);
@@ -645,7 +651,13 @@ try{
 const datos=JSON.parse(ev.target.result);
 if(datos.viajeGastos)setViajeGastos(datos.viajeGastos);
 if(datos.viajeViajeros)setViajeViajeros(datos.viajeViajeros);
-if(datos.cal)setCal(datos.cal);
+if(datos.cal){
+const calMerged=CAL_INI.map(ini=>{
+const fromFB=datos.cal.find(c=>c.id===ini.id);
+return fromFB?{...fromFB,done:ini.done||fromFB.done}:ini;
+});
+setCal(calMerged);
+}
 if(datos.scores)setScores(datos.scores);
 if(datos.jugadores)setJugadores(datos.jugadores);
 guardarTodo();
@@ -1564,29 +1576,26 @@ const stats=React.useMemo(()=>calcEstadisticas(),[]);
 const probsInd=React.useMemo(()=>simularTemporada(stats,'ind',10000),[stats]);
 const probsLiv=React.useMemo(()=>simularTemporada(stats,'liv',10000),[stats]);
 
-// Combinar stats con probabilidades y filtrar <8%
-const filtrarYRecalcular=(statsData,probs)=>{
+// Combinar stats con probabilidades - solo TOP 5
+const filtrarTop5=(statsData,probs)=>{
 const conProb=statsData.map(s=>({
 ...s,
 probOriginal:probs.find(p=>p.nombre===s.nombre)?.prob||0
-}));
-// Filtrar los que tienen >=8%
-const filtrados=conProb.filter(s=>s.probOriginal>=8);
+})).sort((a,b)=>b.probOriginal-a.probOriginal);
+// Tomar solo los 5 primeros
+const top5=conProb.slice(0,5);
 // Recalcular para que sumen 100%
-const totalProb=filtrados.reduce((sum,s)=>sum+s.probOriginal,0);
-return filtrados.map(s=>({
+const totalProb=top5.reduce((sum,s)=>sum+s.probOriginal,0);
+return top5.map(s=>({
 ...s,
 prob:totalProb>0?Math.round((s.probOriginal/totalProb)*1000)/10:0
-})).sort((a,b)=>b.prob-a.prob);
+}));
 };
 
-const dataInd=filtrarYRecalcular(stats,probsInd);
-const dataLiv=filtrarYRecalcular(stats,probsLiv);
+const dataInd=filtrarTop5(stats,probsInd);
+const dataLiv=filtrarTop5(stats,probsLiv);
 const data=stab==='ind'?dataInd:dataLiv;
 
-// Contar excluidos
-const excluidosInd=stats.length-dataInd.length;
-const excluidosLiv=stats.length-dataLiv.length;
 
 const getTendIcon=(t)=>t>1?'📈':t<-1?'📉':'➡️';
 const getBarColor=(prob)=>{
@@ -1607,7 +1616,7 @@ return(
 <div style={{background:'linear-gradient(135deg,#1a237e,#3949ab)',borderRadius:12,padding:15,marginBottom:15,color:'#fff'}}>
 <div style={{fontSize:13,opacity:0.9,marginBottom:5}}>🎯 Probabilidad de ganar el Maniac Tour</div>
 <div style={{fontSize:11,opacity:0.7,marginBottom:4}}>Basada en: resultados, handicap, tendencia ({stats[0]?.pruebasInd||0} pruebas jugadas)</div>
-<div style={{fontSize:10,opacity:0.6}}>⚠️ Excluidos {stab==='ind'?excluidosInd:excluidosLiv} jugadores con &lt;8% probabilidad</div>
+<div style={{fontSize:10,opacity:0.6}}>🏅 Top 5 candidatos con opciones reales</div>
 </div>
 
 <div style={{fontSize:12,fontWeight:600,color:'#666',marginBottom:10,display:'grid',gridTemplateColumns:'1fr 55px 55px 70px',gap:8,padding:'0 5px'}}>
@@ -1659,8 +1668,8 @@ Hcp {s.hcp} • {stab==='ind'?s.pruebasInd:s.pruebasLiv} pruebas • {stab==='in
 <li><b>Media de puntos</b>: Promedio stableford en pruebas jugadas</li>
 <li><b>Handicap</b>: Factor de consistencia según nivel</li>
 <li><b>Tendencia</b>: Evolución en últimas pruebas</li>
-<li><b>Filtro 8%</b>: Jugadores con &lt;8% se excluyen del cálculo</li>
-<li><b>Recálculo</b>: Los restantes se redistribuyen al 100%</li>
+<li><b>Top 5</b>: Solo los 5 con más opciones</li>
+<li><b>Recálculo</b>: Probabilidades redistribuidas al 100%</li>
 </ul>
 </div>
 </div>
@@ -1804,14 +1813,15 @@ return(
 
 // RICKI'S CORNER - Apuestas
 const RickiScr=()=>{
+const[formApuesta,setFormApuesta]=useState({retador:'',retado:'',descripcion:'',monto:'',pruebaId:''});
 const pruebasPendientes=cal.filter(p=>!p.done);
 const crearApuesta=()=>{
-if(!nuevaApuesta.retador||!nuevaApuesta.retado||!nuevaApuesta.descripcion)return;
-const ap={id:Date.now(),retador:nuevaApuesta.retador,retado:nuevaApuesta.retado,descripcion:nuevaApuesta.descripcion,monto:nuevaApuesta.monto||'Honor',pruebaId:nuevaApuesta.pruebaId,estado:'pendiente',fecha:new Date().toISOString()};
+if(!formApuesta.retador||!formApuesta.retado||!formApuesta.descripcion)return;
+const ap={id:Date.now(),retador:formApuesta.retador,retado:formApuesta.retado,descripcion:formApuesta.descripcion,monto:formApuesta.monto||'Honor',pruebaId:formApuesta.pruebaId,estado:'pendiente',fecha:new Date().toISOString()};
 const nuevas=[...apuestas,ap];
 setApuestas(nuevas);
 localStorage.setItem('maniac_apuestas',JSON.stringify(nuevas));
-setNuevaApuesta({retador:'',retado:'',descripcion:'',monto:'',pruebaId:''});
+setFormApuesta({retador:'',retado:'',descripcion:'',monto:'',pruebaId:''});
 };
 const responderApuesta=(id,acepta)=>{
 const nuevas=apuestas.map(a=>a.id===id?{...a,estado:acepta?'aceptada':'rechazada'}:a);
@@ -1840,17 +1850,17 @@ return(
 <div className="sec">
 <div className="section-title">➕ Nueva Apuesta</div>
 <div className="card" style={{padding:15}}>
-<select className="form-select" value={nuevaApuesta.retador} onChange={e=>setNuevaApuesta({...nuevaApuesta,retador:e.target.value})} style={{marginBottom:10}}>
+<select className="form-select" value={formApuesta.retador} onChange={e=>setFormApuesta({...formApuesta,retador:e.target.value})} style={{marginBottom:10}}>
 <option value="">Retador...</option>
 {jugadores.map(j=><option key={j.id} value={j.nombre}>{j.nombre}</option>)}
 </select>
-<select className="form-select" value={nuevaApuesta.retado} onChange={e=>setNuevaApuesta({...nuevaApuesta,retado:e.target.value})} style={{marginBottom:10}}>
+<select className="form-select" value={formApuesta.retado} onChange={e=>setFormApuesta({...formApuesta,retado:e.target.value})} style={{marginBottom:10}}>
 <option value="">Retado...</option>
-{jugadores.filter(j=>j.nombre!==nuevaApuesta.retador).map(j=><option key={j.id} value={j.nombre}>{j.nombre}</option>)}
+{jugadores.filter(j=>j.nombre!==formApuesta.retador).map(j=><option key={j.id} value={j.nombre}>{j.nombre}</option>)}
 </select>
-<input type="text" className="form-input" placeholder="Descripción de la apuesta..." value={nuevaApuesta.descripcion} onChange={e=>setNuevaApuesta({...nuevaApuesta,descripcion:e.target.value})} style={{marginBottom:10}}/>
-<input type="text" className="form-input" placeholder="Monto (ej: 10€, cerveza...)" value={nuevaApuesta.monto} onChange={e=>setNuevaApuesta({...nuevaApuesta,monto:e.target.value})} style={{marginBottom:10}}/>
-<select className="form-select" value={nuevaApuesta.pruebaId} onChange={e=>setNuevaApuesta({...nuevaApuesta,pruebaId:e.target.value})} style={{marginBottom:10}}>
+<input type="text" className="form-input" placeholder="Descripción de la apuesta..." value={formApuesta.descripcion} onChange={e=>setFormApuesta({...formApuesta,descripcion:e.target.value})} style={{marginBottom:10}}/>
+<input type="text" className="form-input" placeholder="Monto (ej: 10€, cerveza...)" value={formApuesta.monto} onChange={e=>setFormApuesta({...formApuesta,monto:e.target.value})} style={{marginBottom:10}}/>
+<select className="form-select" value={formApuesta.pruebaId} onChange={e=>setFormApuesta({...formApuesta,pruebaId:e.target.value})} style={{marginBottom:10}}>
 <option value="">Prueba (opcional)...</option>
 {pruebasPendientes.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
 </select>
