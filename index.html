@@ -217,8 +217,8 @@ const CLASIF=[{pos:1,nombre:'Rodiles',total:77},{pos:2,nombre:'Iñaki',total:71}
 const CLASIF_LIV=[{pos:1,nombre:'Abril',total:93},{pos:2,nombre:'Rodiles',total:82},{pos:3,nombre:'Alex',total:80},{pos:4,nombre:'Ricard',total:71},{pos:5,nombre:'Iñaki',total:68},{pos:6,nombre:'Ginés',total:59},{pos:7,nombre:'Chiky',total:59},{pos:8,nombre:'Pedro',total:58},{pos:9,nombre:'Diego',total:58},{pos:10,nombre:'Santi',total:53},{pos:11,nombre:'Durán',total:30},{pos:12,nombre:'Botella',total:18},{pos:13,nombre:'Tito Rubio',total:10}];
 
 // Handicaps actualizados post-Baviera (15/03/2026)
-const DATA_VERSION='2026-03-15-v7'; // v7 añadidas estadísticas LIV
-const JUG_INI=[{id:'rodiles',nombre:'Rodiles',hcp:-3,esR:true},{id:'titorubio',nombre:'Tito Rubio',hcp:3},{id:'ricard',nombre:'Ricard',hcp:7},{id:'alex',nombre:'Alex',hcp:7.5},{id:'santi',nombre:'Santi',hcp:8},{id:'inaki',nombre:'Iñaki',hcp:10},{id:'abril',nombre:'Abril',hcp:12},{id:'botella',nombre:'Botella',hcp:11},{id:'pedro',nombre:'Pedro',hcp:12.5},{id:'chiky',nombre:'Chiky',hcp:14},{id:'diego',nombre:'Diego',hcp:16},{id:'duran',nombre:'Durán',hcp:16},{id:'gines',nombre:'Ginés',hcp:18}];
+const DATA_VERSION='2026-03-15-v8'; // v8 Rodiles hcp +3 (esR=reducido)
+const JUG_INI=[{id:'rodiles',nombre:'Rodiles',hcp:3,esR:true},{id:'titorubio',nombre:'Tito Rubio',hcp:3},{id:'ricard',nombre:'Ricard',hcp:7},{id:'alex',nombre:'Alex',hcp:7.5},{id:'santi',nombre:'Santi',hcp:8},{id:'inaki',nombre:'Iñaki',hcp:10},{id:'abril',nombre:'Abril',hcp:12},{id:'botella',nombre:'Botella',hcp:11},{id:'pedro',nombre:'Pedro',hcp:12.5},{id:'chiky',nombre:'Chiky',hcp:14},{id:'diego',nombre:'Diego',hcp:16},{id:'duran',nombre:'Durán',hcp:16},{id:'gines',nombre:'Ginés',hcp:18}];
 
 const CAL_INI=[
 {id:'hacienda26',nombre:'La Hacienda',fecha:'2026-02-14',campoId:'hacienda',done:true,ins:[],grp:[],eqLIV:[],histPartidas:[['Ricard','Diego','Ginés','Abril'],['Chiky','Santi','Pedro'],['Iñaki','Alex','Rodiles']]},
@@ -269,13 +269,25 @@ totalPagado:21820.24
 };
 
 const pc=p=>p===1?'gold':p===2?'silver':p===3?'bronze':'';
-const hcpJ=(h,r)=>r?Math.floor(h):Math.ceil(h);
-const gE=(hcp,idx)=>{if(hcp<=0)return idx<=Math.abs(hcp)?-1:0;if(hcp<=18)return idx<=hcp?1:0;if(hcp<=36)return idx<=(hcp-18)?2:1;return idx<=(hcp-36)?3:2;};
+// hcpJ: handicap de juego. Para esR (reducido/+), devuelve negativo
+const hcpJ=(h,r)=>r?-Math.abs(h):Math.ceil(h);
+// gE: golpes extra en un hoyo según handicap e índice del hoyo
+// Handicap negativo (ej: -3 = +3): da golpes en hoyos con índice más ALTO (16,17,18 = más fáciles)
+const gE=(hcp,idx)=>{
+if(hcp<0){const dar=Math.abs(hcp);return idx>(18-dar)?-1:0;}
+if(hcp===0)return 0;
+if(hcp<=18)return idx<=hcp?1:0;
+if(hcp<=36)return idx<=(hcp-18)?2:1;
+return idx<=(hcp-36)?3:2;
+};
 const stb=(g,p,e)=>{if(!g)return 0;const d=g-e-p;return d<=-3?5:d===-2?4:d===-1?3:d===0?2:d===1?1:0;};
 const genCode=()=>Math.random().toString(36).substring(2,6).toUpperCase();
 
+// Formatear handicap: Rodiles (esR) muestra +3, los demás sin signo
+const fmtHcp=(hcp,esR)=>esR?`+${hcp}`:`${hcp}`;
+
 // Función para mostrar nombre con handicap: "Nombre hcp (hcpJuego)"
-// Rodiles (esR:true) redondea a la baja, el resto al alza
+// Rodiles (esR:true) redondea a la baja y muestra +, el resto al alza sin signo
 const nomConHcp=(jug,jugadores)=>{
 if(!jug)return'';
 const j=jugadores?.find(x=>x.nombre===jug.nombre||x.nombre===jug)||jug;
@@ -283,7 +295,7 @@ const nombre=j.nombre||jug.nombre||jug;
 const hcp=j.hcp;
 if(hcp===undefined||hcp===null)return nombre;
 const hcpJuego=j.esR?Math.floor(hcp):Math.ceil(hcp);
-return`${nombre} ${hcp} (${hcpJuego})`;
+return`${nombre} ${fmtHcp(hcp,j.esR)} (${fmtHcp(hcpJuego,j.esR)})`;
 };
 
 // Sistema de puntos por posición INDIVIDUAL (índice 0 = 1º puesto)
@@ -340,8 +352,9 @@ const jugNombres=[...new Set(PRUEBAS_HIST.flatMap(p=>p.res.map(r=>r.nombre)))];
 const PRUEBAS_RESTANTES=CAL_INI.filter(p=>!p.done&&!p.esFinal&&!p.esRyder).length;
 
 jugNombres.forEach(nombre=>{
-const jugInfo=JUG_INI.find(j=>j.nombre===nombre)||{hcp:15};
+const jugInfo=JUG_INI.find(j=>j.nombre===nombre)||{hcp:15,esR:false};
 const hcp=jugInfo.hcp;
+const esR=jugInfo.esR||false;
 
 // Historial individual
 const histInd=[];
@@ -387,7 +400,7 @@ const totalInd=CLASIF.find(c=>c.nombre===nombre)?.total||0;
 const totalLiv=CLASIF_LIV.find(c=>c.nombre===nombre)?.total||0;
 
 stats.push({
-nombre,hcp,pruebasInd,pruebasLiv,
+nombre,hcp,esR,pruebasInd,pruebasLiv,
 mediaInd:Math.round(mediaInd*10)/10,
 mediaStb:Math.round(mediaStb*10)/10,
 mediaLiv:Math.round(mediaLiv*10)/10,
@@ -565,6 +578,17 @@ setJugadores(datos.jugadores);
 }
 }
 if(datos.ultimaActualizacion)setUltimaActLocal(datos.ultimaActualizacion);
+// Sincronizar estado de partida en vivo
+if(datos.liveStatus){
+setLiveOn(datos.liveStatus.liveOn||false);
+if(datos.liveStatus.pruebaActivaId){
+const prAct=cal.find(p=>p.id===datos.liveStatus.pruebaActivaId)||datos.cal?.find(p=>p.id===datos.liveStatus.pruebaActivaId);
+if(prAct)setPruebaActiva(prAct);
+}else{setPruebaActiva(null);}
+if(datos.liveStatus.hole)setHole(datos.liveStatus.hole);
+}else{
+setLiveOn(false);setPruebaActiva(null);
+}
 });
 }
 }
@@ -587,6 +611,7 @@ const ejecutarGuardado=()=>{
 const timestamp=new Date().toISOString();
 const datos=datosOverride||{
 viajeGastos,viajeViajeros,cal,scores,jugadores,
+liveStatus:{liveOn,pruebaActivaId:pruebaActiva?.id||null,hole},
 ultimaActualizacion:timestamp,
 dataVersion:DATA_VERSION
 };
@@ -1068,20 +1093,25 @@ const setScore=(jid,h,g)=>setScores(prev=>({...prev,[`${jid}-${h}`]:Math.max(0,g
 const startScoring=(prueba,grupo)=>{
 // Limpiar scores anteriores de los jugadores de esta partida
 const jugPartida=grupo.jug||[];
-setScores(prev=>{
-const nuevoScores={...prev};
+const nuevoScores={...scores};
 jugPartida.forEach(j=>{
-// j es un objeto {id, nombre, hcp...}, usamos j.id
 for(let h=1;h<=18;h++){
 delete nuevoScores[`${j.id}-${h}`];
 }
 });
-return nuevoScores;
-});
+setScores(nuevoScores);
 setPruebaActiva(prueba);
 setPartidaActiva(grupo);
 setHole(1);
 setLiveOn(true);
+// Guardar estado de inicio de live a Firebase
+const datosInicioLive={
+viajeGastos,viajeViajeros,cal,scores:nuevoScores,jugadores,
+liveStatus:{liveOn:true,pruebaActivaId:prueba.id,hole:1},
+ultimaActualizacion:new Date().toISOString(),
+dataVersion:DATA_VERSION
+};
+guardarTodo(datosInicioLive,true);
 setScr('scoring');
 };
 
@@ -1605,7 +1635,7 @@ return(
 {data.map(j=>(
 <div key={j.nombre} className={`rank-item ${pc(j.pos)}`} onClick={()=>clickJug(j.nombre)}>
 <div className={`rank-pos ${pc(j.pos)}`}>{j.pos}</div>
-<div className="rank-info"><div className="rank-name">{j.nombre} {(()=>{const jg=jugadores.find(x=>x.nombre===j.nombre);if(!jg)return'';const hcpJ=jg.esR?Math.floor(jg.hcp):Math.ceil(jg.hcp);return`${jg.hcp} (${hcpJ})`;})()}</div></div>
+<div className="rank-info"><div className="rank-name">{j.nombre} {(()=>{const jg=jugadores.find(x=>x.nombre===j.nombre);if(!jg)return'';const hcpJuego=jg.esR?Math.floor(jg.hcp):Math.ceil(jg.hcp);return`${fmtHcp(jg.hcp,jg.esR)} (${fmtHcp(hcpJuego,jg.esR)})`;})()}</div></div>
 <div className={`rank-total ${tab==='liv'?'liv':''}`}>{j.total}</div>
 </div>
 ))}
@@ -1677,7 +1707,7 @@ border:i===0?'2px solid #ffd54f':'1px solid #eee'
 </div>
 </div>
 <div style={{textAlign:'center'}}>
-<div style={{fontWeight:700,fontSize:14,color:'#666'}}>{s.hcp}</div>
+<div style={{fontWeight:700,fontSize:14,color:'#666'}}>{fmtHcp(s.hcp,s.esR)}</div>
 </div>
 <div style={{textAlign:'center'}}>
 <div style={{fontWeight:700,fontSize:14,color:'#1565c0'}}>{s.proyeccion}</div>
@@ -1769,7 +1799,7 @@ return(
 <div key={j.id} className="card" onClick={()=>{setSelJug(j);setScr('jugador-detalle');}}>
 <div style={{display:'flex',alignItems:'center'}}>
 <div style={{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,var(--pri),var(--pri-l))',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,marginRight:12}}>{j.nombre.charAt(0)}</div>
-<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</div><div style={{fontSize:11,color:'#888'}}>{getTotal(j.nombre)} pts</div></div>
+<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {fmtHcp(j.hcp,j.esR)} ({fmtHcp(j.esR?Math.floor(j.hcp):Math.ceil(j.hcp),j.esR)})</div><div style={{fontSize:11,color:'#888'}}>{getTotal(j.nombre)} pts</div></div>
 <span style={{color:'#888'}}>→</span>
 </div>
 </div>
@@ -1793,7 +1823,7 @@ return(
 <div className="jug-header">
 <div className="jug-avatar">{selJug.nombre.charAt(0)}</div>
 <div className="jug-nombre">{selJug.nombre}</div>
-<div className="jug-hcp">Handicap {selJug.esR?'+':''}{selJug.hcp} • Juega con {selJug.esR?'+':''}{hcpJuego}</div>
+<div className="jug-hcp">Handicap {fmtHcp(selJug.hcp,selJug.esR)} • Juega con {fmtHcp(hcpJuego,selJug.esR)}</div>
 </div>
 <div className="stats-grid">
 <div className="stat-item"><div className="stat-value">{cg.pos||'-'}º</div><div className="stat-label">Pos. General</div></div>
@@ -1875,21 +1905,74 @@ return(
 );};
 
 const LiveScr=()=>{
-if(!liveOn||!pruebaActiva||!partidaActiva)return(
+const[selJugLive,setSelJugLive]=useState(null);
+if(!liveOn||!pruebaActiva)return(
 <div className="scroll">
 <header className="hdr"><button className="hdr-back" onClick={()=>setScr('home')}>←</button><h1>En Vivo</h1></header>
 <div className="empty-state"><div className="empty-icon">📺</div><p>No hay prueba en directo</p><p style={{fontSize:12,marginTop:5}}>Cuando un admin de partida comience, aparecerá aquí</p></div>
 </div>
 );
 const pr=getPrueba(pruebaActiva.id);
+// Calcular tarjeta del jugador seleccionado
+const getTarjeta=(jug)=>{
+if(!campoAct||!jug)return[];
+const hcp=hcpJ(jug.hcp,jug.esR);
+return campoAct.hoyos.map(h=>{
+const golpes=scores[`${jug.id}-${h.n}`]||0;
+const extra=gE(hcp,h.i);
+const pts=golpes>0?stb(golpes,h.p,extra):'-';
+// Calcular golpes para 2 pts: par + extra + 0 = 2 pts
+const golpesPara2=h.p+extra;
+return{hoyo:h.n,par:h.p,index:h.i,extra,golpes,pts,golpesPara2,jugado:golpes>0};
+});
+};
+const tarjeta=selJugLive?getTarjeta(selJugLive):[];
+const jugTotal=selJugLive?lbGlobal.find(x=>x.id===selJugLive.id):null;
 return(
 <div className="scroll">
-<header className="hdr" style={{background:'linear-gradient(135deg,var(--danger),#b71c1c)'}}><button className="hdr-back" onClick={()=>setScr('home')}>←</button><div><h1>{pr?.nombre}</h1><p>Hoyo {hole}</p></div><span className="live-dot"></span></header>
+<header className="hdr" style={{background:'linear-gradient(135deg,var(--danger),#b71c1c)'}}><button className="hdr-back" onClick={()=>setScr('home')}>←</button><div><h1>{pr?.nombre}</h1><p>Hoyo actual: {hole}</p></div><span className="live-dot"></span></header>
 <div className="sec">
-<div className="lb"><div className="lb-hdr"><span className="lb-title"><span className="live-dot"></span> LEADERBOARD</span></div>
-{lb.length?lb.map((j,i)=><div key={j.id} className="lb-row"><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre}</span><span className="lb-thru">Thru {j.hoyosJugados||'-'}</span><span className="lb-score">{j.totalPts}</span></div>):<div className="lb-row" style={{justifyContent:'center',color:'#888'}}>Esperando datos...</div>}
+<p style={{fontSize:11,color:'#888',marginBottom:10}}>👆 Toca un jugador para ver su tarjeta</p>
+<div className="lb"><div className="lb-hdr"><span className="lb-title"><span className="live-dot"></span> LEADERBOARD EN VIVO</span><span style={{fontSize:10,opacity:.7}}>{lbGlobal.length} jugadores</span></div>
+{lbGlobal.length?lbGlobal.map((j,i)=><div key={j.id} className="lb-row" style={{cursor:'pointer',background:selJugLive?.id===j.id?'rgba(198,40,40,0.15)':'transparent'}} onClick={()=>setSelJugLive(selJugLive?.id===j.id?null:j)}><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre}</span><span className="lb-thru">Thru {j.hoyosJugados||'-'}</span><span className="lb-score">{j.totalPts}</span></div>):<div className="lb-row" style={{justifyContent:'center',color:'#888'}}>Esperando datos...</div>}
 </div>
 </div>
+{selJugLive&&<div className="sec" style={{paddingTop:0}}>
+<div style={{background:'linear-gradient(135deg,#1a472a,#2d5a3f)',borderRadius:12,padding:14,color:'#fff',marginBottom:12}}>
+<div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+<div>
+<div style={{fontSize:18,fontWeight:700}}>{selJugLive.nombre}</div>
+<div style={{fontSize:12,opacity:.8}}>Hcp {fmtHcp(selJugLive.hcp,selJugLive.esR)} • Juega con {fmtHcp(selJugLive.esR?Math.floor(selJugLive.hcp):Math.ceil(selJugLive.hcp),selJugLive.esR)}</div>
+</div>
+<div style={{textAlign:'right'}}>
+<div style={{fontSize:28,fontWeight:700}}>{jugTotal?.totalPts||0}</div>
+<div style={{fontSize:10,opacity:.8}}>PUNTOS</div>
+</div>
+</div>
+</div>
+<div style={{background:'#fff',borderRadius:10,overflow:'hidden',border:'1px solid #e0e0e0'}}>
+<div style={{display:'grid',gridTemplateColumns:'50px 45px 45px 50px 50px 60px',background:'var(--pri)',color:'#fff',fontSize:10,fontWeight:700,textAlign:'center',padding:'10px 0'}}>
+<span>Hoyo</span><span>Par</span><span>Idx</span><span>Extra</span><span>Golpes</span><span>Pts</span>
+</div>
+{tarjeta.map(h=>(
+<div key={h.hoyo} style={{display:'grid',gridTemplateColumns:'50px 45px 45px 50px 50px 60px',fontSize:13,textAlign:'center',padding:'10px 0',borderBottom:'1px solid #eee',background:h.jugado?'#fff':'#f9f9f9',opacity:h.jugado?1:0.5}}>
+<span style={{fontWeight:700}}>{h.hoyo}</span>
+<span>{h.par}</span>
+<span style={{color:'#888'}}>{h.index}</span>
+<span style={{fontWeight:600,color:h.extra>0?'#4caf50':h.extra<0?'#c62828':'#888'}}>{h.extra>0?`+${h.extra}`:h.extra<0?h.extra:'-'}</span>
+<span style={{fontWeight:700,color:h.jugado?'var(--pri)':'#ccc'}}>{h.golpes||'-'}</span>
+<span style={{fontWeight:700,color:h.pts==='-'?'#ccc':h.pts>=3?'#4caf50':h.pts===2?'var(--pri)':h.pts===1?'#ff9800':'#c62828'}}>{h.pts}</span>
+</div>
+))}
+</div>
+<div style={{background:'#e3f2fd',borderRadius:10,padding:12,marginTop:12,fontSize:11}}>
+<p style={{margin:0,color:'#1565c0',fontWeight:600}}>📊 Leyenda de golpes extra:</p>
+<p style={{margin:'6px 0 0',color:'#666'}}>• <b style={{color:'#4caf50'}}>+1</b>: Recibe 1 golpe (par+1 = 2 pts)</p>
+<p style={{margin:'4px 0 0',color:'#666'}}>• <b style={{color:'#c62828'}}>-1</b>: Da 1 golpe, necesita birdie bruto para 2 pts</p>
+<p style={{margin:'4px 0 0',color:'#666'}}>• <b style={{color:'#888'}}>-</b>: Sin extra, par bruto = 2 pts</p>
+</div>
+<button className="btn btn-sec" style={{marginTop:12}} onClick={()=>setSelJugLive(null)}>✕ Cerrar tarjeta</button>
+</div>}
 </div>
 );};
 
@@ -2047,7 +2130,7 @@ return(
 {ins.length===0?<p style={{color:'#888',fontSize:13,marginBottom:15}}>No hay jugadores inscritos</p>:ins.map(j=>(
 <div key={j.id} className="inscrito-row">
 <div className="inscrito-avatar">{j.nombre.charAt(0)}</div>
-<span className="inscrito-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span>
+<span className="inscrito-name">{j.nombre} {fmtHcp(j.hcp,j.esR)} ({fmtHcp(j.esR?Math.floor(j.hcp):Math.ceil(j.hcp),j.esR)})</span>
 <span className="inscrito-remove" onClick={()=>remIns(pr.id,j.id)}>✕</span>
 </div>
 ))}
@@ -2055,7 +2138,7 @@ return(
 {jugadores.filter(j=>!ins.find(i=>i.id===j.id)).map(j=>(
 <div key={j.id} className="checkbox-item" onClick={()=>addIns(pr.id,j)}>
 <div className="checkbox">+</div>
-<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</div></div>
+<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {fmtHcp(j.hcp,j.esR)} ({fmtHcp(j.esR?Math.floor(j.hcp):Math.ceil(j.hcp),j.esR)})</div></div>
 </div>
 ))}
 </div>
@@ -2113,7 +2196,7 @@ return(
 <div className="grupo-jugadores">
 {g.jug.map(j=>(
 <div key={j.id} className={`jugador-chip ${g.adminId===j.id?'is-admin':''}`}>
-{g.adminId===j.id&&'👤 '}{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})
+{g.adminId===j.id&&'👤 '}{j.nombre} {fmtHcp(j.hcp,j.esR)} ({fmtHcp(j.esR?Math.floor(j.hcp):Math.ceil(j.hcp),j.esR)})
 <span className="remove" onClick={()=>remJG(pr.id,g.id,j.id)}>×</span>
 </div>
 ))}
@@ -2127,7 +2210,7 @@ return(
 </div>}
 </div>
 );})}
-{sinA.length>0&&<><div className="section-title" style={{marginTop:20}}>Sin asignar ({sinA.length})</div>{sinA.map(j=><div key={j.id} className="inscrito-row"><div className="inscrito-avatar">{j.nombre.charAt(0)}</div><span className="inscrito-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span></div>)}</>}
+{sinA.length>0&&<><div className="section-title" style={{marginTop:20}}>Sin asignar ({sinA.length})</div>{sinA.map(j=><div key={j.id} className="inscrito-row"><div className="inscrito-avatar">{j.nombre.charAt(0)}</div><span className="inscrito-name">{j.nombre} {fmtHcp(j.hcp,j.esR)} ({fmtHcp(j.esR?Math.floor(j.hcp):Math.ceil(j.hcp),j.esR)})</span></div>)}</>}
 </div>
 </div>
 );};
@@ -2178,7 +2261,7 @@ return(
 {jugadores.filter(j=>!ins.find(i=>i.id===j.id)).slice(0,6).map(j=>(
 <div key={j.id} className="checkbox-item" onClick={()=>addIns(ryder.id,j)}>
 <div className="checkbox">+</div>
-<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre}</div><div style={{fontSize:11,color:'#888'}}>Hcp {j.hcp}</div></div>
+<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre}</div><div style={{fontSize:11,color:'#888'}}>Hcp {fmtHcp(j.hcp,j.esR)}</div></div>
 </div>
 ))}
 </>):(<>
@@ -2326,7 +2409,7 @@ const pts=hoyo?stb(golpes,hoyo.p,extra):0;
 return(
 <div key={j.id} style={{background:'#fff',borderRadius:10,padding:14,marginBottom:10}}>
 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-<div><span style={{fontWeight:700}}>{j.nombre}</span><span style={{fontSize:11,color:'#888',marginLeft:8}}>Hcp {j.hcp}{extra>0?` (+${extra})`:''}</span></div>
+<div><span style={{fontWeight:700}}>{j.nombre}</span><span style={{fontSize:11,color:'#888',marginLeft:8}}>Hcp {fmtHcp(j.hcp,j.esR)}{extra!==0?` (${extra>0?'+':''}${extra})`:''}</span></div>
 <div style={{fontSize:12,color:'var(--pri)',fontWeight:700}}>{pts} pts</div>
 </div>
 <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:15}}>
@@ -2367,13 +2450,13 @@ return(
 <div key={eq.id} className="liv-pair">
 <div className="liv-pair-num">{idx+1}</div>
 <div className="liv-pair-players">
-{eq.jug.map(j=><div key={j.id} className="liv-player">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)}) <span style={{cursor:'pointer'}} onClick={()=>remJL(pr.id,eq.id,j.id)}>×</span></div>)}
+{eq.jug.map(j=><div key={j.id} className="liv-player">{j.nombre} {fmtHcp(j.hcp,j.esR)} ({fmtHcp(j.esR?Math.floor(j.hcp):Math.ceil(j.hcp),j.esR)}) <span style={{cursor:'pointer'}} onClick={()=>remJL(pr.id,eq.id,j.id)}>×</span></div>)}
 {eq.jug.length<2&&sinA.length>0&&<select className="form-select" style={{width:'auto',padding:'6px 10px',fontSize:12,background:'#ffebee'}} onChange={e=>{const jug=ins.find(j=>j.id===e.target.value);if(jug)addJL(pr.id,eq.id,jug);e.target.value='';}}><option value="">+ Añadir</option>{sinA.map(j=><option key={j.id} value={j.id}>{j.nombre}</option>)}</select>}
 </div>
 <span style={{color:'#c62828',cursor:'pointer'}} onClick={()=>remEL(pr.id,eq.id)}>🗑</span>
 </div>
 ))}
-{sinA.length>0&&<><div className="section-title" style={{marginTop:20}}>Sin equipo ({sinA.length})</div>{sinA.map(j=><div key={j.id} className="inscrito-row"><div className="inscrito-avatar">{j.nombre.charAt(0)}</div><span className="inscrito-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span></div>)}</>}
+{sinA.length>0&&<><div className="section-title" style={{marginTop:20}}>Sin equipo ({sinA.length})</div>{sinA.map(j=><div key={j.id} className="inscrito-row"><div className="inscrito-avatar">{j.nombre.charAt(0)}</div><span className="inscrito-name">{j.nombre} {fmtHcp(j.hcp,j.esR)} ({fmtHcp(j.esR?Math.floor(j.hcp):Math.ceil(j.hcp),j.esR)})</span></div>)}</>}
 </div>
 </div>
 );};
@@ -2387,7 +2470,7 @@ const AdminJugadoresScr=()=>(
 <div key={j.id} className="card" onClick={()=>openEditJug(j)}>
 <div style={{display:'flex',alignItems:'center'}}>
 <div style={{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,var(--pri),var(--pri-l))',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,marginRight:12}}>{j.nombre.charAt(0)}</div>
-<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</div></div>
+<div style={{flex:1}}><div style={{fontWeight:700}}>{j.nombre} {fmtHcp(j.hcp,j.esR)} ({fmtHcp(j.esR?Math.floor(j.hcp):Math.ceil(j.hcp),j.esR)})</div></div>
 <span style={{color:'var(--pri)',fontSize:18}}>✏️</span>
 </div>
 </div>
@@ -2414,15 +2497,28 @@ return(
 
 // Función para guardar y avanzar al siguiente hoyo
 const confirmarHoyo=()=>{
-guardarTodo();
+const siguienteHoyo=hole<18?hole+1:hole;
+const datosConHoyo={
+viajeGastos,viajeViajeros,cal,scores,jugadores,
+liveStatus:{liveOn:true,pruebaActivaId:pruebaActiva?.id||null,hole:siguienteHoyo},
+ultimaActualizacion:new Date().toISOString(),
+dataVersion:DATA_VERSION
+};
+guardarTodo(datosConHoyo,true);
 if(hole<18){
-setTimeout(()=>setHole(h=>h+1),500);
+setTimeout(()=>setHole(siguienteHoyo),500);
 }
 };
 
 // Función para finalizar partida - muestra pantalla de resultados
 const finalizarPartida=()=>{
-guardarTodo();
+const datosPartidaFin={
+viajeGastos,viajeViajeros,cal,scores,jugadores,
+liveStatus:{liveOn:true,pruebaActivaId:pruebaActiva?.id||null,hole:18},
+ultimaActualizacion:new Date().toISOString(),
+dataVersion:DATA_VERSION
+};
+guardarTodo(datosPartidaFin,true);
 // Inicializar asistencia a comida (todos marcados por defecto)
 const jugadores_p=partidaActiva?.jug||[];
 const asistenciaInicial={};
@@ -2440,6 +2536,14 @@ setModoEdicion(true);
 
 // Función para salir del scoring
 const salirScoring=()=>{
+// Guardar estado de fin de live a Firebase antes de limpiar
+const datosFinLive={
+viajeGastos,viajeViajeros,cal,scores,jugadores,
+liveStatus:{liveOn:false,pruebaActivaId:null,hole:1},
+ultimaActualizacion:new Date().toISOString(),
+dataVersion:DATA_VERSION
+};
+guardarTodo(datosFinLive,true);
 setLiveOn(false);
 setPartidaActiva(null);
 setPruebaActiva(null);
@@ -2568,7 +2672,7 @@ return(
 </div>
 <div className="sec">
 <div className="lb"><div className="lb-hdr"><span className="lb-title">🏆 RESULTADO FINAL GLOBAL</span></div>
-{lbGlobal.map((j,i)=><div key={j.id} className="lb-row"><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span><span className="lb-thru">{j.hoyosJugados} hoyos</span><span className="lb-score">{j.totalPts}</span></div>)}
+{lbGlobal.map((j,i)=><div key={j.id} className="lb-row"><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {fmtHcp(j.hcp,j.esR)} ({fmtHcp(j.esR?Math.floor(j.hcp):Math.ceil(j.hcp),j.esR)})</span><span className="lb-thru">{j.hoyosJugados} hoyos</span><span className="lb-score">{j.totalPts}</span></div>)}
 </div>
 </div>
 </div>
@@ -2591,7 +2695,7 @@ let tot=0;for(let h=1;h<=18;h++){const g=scores[`${j.id}-${h}`];if(g>0){const ho
 const tieneScore=golpes>0;
 return(
 <div key={j.id} className="player-score" style={{border:tieneScore?'2px solid #4caf50':'2px solid #ffcc80',background:tieneScore?'#e8f5e9':'#fff'}}>
-<div className="player-row"><div><span className="player-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)})</span>{extra!==0&&<span className="player-extra">{extra>0?'+':''}{extra}</span>}{tieneScore&&<span style={{marginLeft:8,color:'#4caf50'}}>✓</span>}</div><span className="player-total">{tot}</span></div>
+<div className="player-row"><div><span className="player-name">{j.nombre} {fmtHcp(j.hcp,j.esR)} ({fmtHcp(j.esR?Math.floor(j.hcp):Math.ceil(j.hcp),j.esR)})</span>{extra!==0&&<span className="player-extra">{extra>0?'+':''}{extra}</span>}{tieneScore&&<span style={{marginLeft:8,color:'#4caf50'}}>✓</span>}</div><span className="player-total">{tot}</span></div>
 <div className="stroke-row">
 <button className="stroke-btn minus" onClick={()=>cambiarScore(j.id,hole,golpes-1)}>−</button>
 <div><div className="stroke-val">{golpes||'-'}</div><div className="stroke-pts">{golpes>0&&<><b>{pts}</b> pts</>}</div></div>
@@ -2624,7 +2728,7 @@ return(
 <div className="lb"><div className="lb-hdr"><span className="lb-title"><span className="live-dot"></span> LEADERBOARD GLOBAL</span><span style={{fontSize:10,opacity:.7}}>{lbGlobal.length} jugadores</span></div>
 {lbGlobal.length>0?lbGlobal.map((j,i)=>{
 const esDeEstaPartida=partidaActiva?.jug?.find(x=>x.id===j.id);
-return(<div key={j.id} className="lb-row" style={{background:esDeEstaPartida?'rgba(198,40,40,0.1)':'transparent'}}><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {j.hcp} ({j.esR?Math.floor(j.hcp):Math.ceil(j.hcp)}){esDeEstaPartida&&<span style={{marginLeft:4,fontSize:10}}>●</span>}</span><span className="lb-thru">Thru {j.hoyosJugados||'-'}</span><span className="lb-score">{j.totalPts}</span></div>);
+return(<div key={j.id} className="lb-row" style={{background:esDeEstaPartida?'rgba(198,40,40,0.1)':'transparent'}}><span className={`lb-pos ${i<3?'p'+(i+1):''}`}>{i+1}</span><span className="lb-name">{j.nombre} {fmtHcp(j.hcp,j.esR)} ({fmtHcp(j.esR?Math.floor(j.hcp):Math.ceil(j.hcp),j.esR)}){esDeEstaPartida&&<span style={{marginLeft:4,fontSize:10}}>●</span>}</span><span className="lb-thru">Thru {j.hoyosJugados||'-'}</span><span className="lb-score">{j.totalPts}</span></div>);
 }):<div className="lb-row" style={{justifyContent:'center',color:'#888'}}>Sin datos</div>}
 </div>
 </div>
