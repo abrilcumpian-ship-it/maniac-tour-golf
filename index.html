@@ -582,7 +582,9 @@ if(datos.ultimaActualizacion)setUltimaActLocal(datos.ultimaActualizacion);
 if(datos.liveStatus){
 setLiveOn(datos.liveStatus.liveOn||false);
 if(datos.liveStatus.pruebaActivaId){
-const prAct=cal.find(p=>p.id===datos.liveStatus.pruebaActivaId)||datos.cal?.find(p=>p.id===datos.liveStatus.pruebaActivaId);
+// Buscar primero en datos.cal (recién cargados) y luego en cal local
+const calFuente=datos.cal||cal;
+const prAct=calFuente.find(p=>p.id===datos.liveStatus.pruebaActivaId);
 if(prAct)setPruebaActiva(prAct);
 }else{setPruebaActiva(null);}
 if(datos.liveStatus.hole)setHole(datos.liveStatus.hole);
@@ -1121,6 +1123,11 @@ for(const pr of cal){
 if(pr.done)continue;
 for(const g of(pr.grp||[])){
 if(g.code===code&&g.jug.length>0){
+// Verificar que la prueba tenga campo asignado
+if(!pr.campoId){
+alert('⚠️ Esta prueba no tiene campo asignado. El administrador debe asignar un campo primero.');
+return false;
+}
 startScoring(pr,g);
 return true;
 }}}
