@@ -985,6 +985,44 @@ return newCal;
 });
 };
 
+// Confirmar asistencia a JUEGO (cualquier usuario puede confirmar)
+const toggleConfJuego=(pruebaId,jug)=>{
+setCal(prev=>{
+const newCal=prev.map(p=>{
+if(p.id!==pruebaId)return p;
+const conf=p.confJuego||[];
+const yaConf=conf.find(c=>c.id===jug.id);
+if(yaConf){
+return{...p,confJuego:conf.filter(c=>c.id!==jug.id)};
+}else{
+return{...p,confJuego:[...conf,{id:jug.id,nombre:jug.nombre,fecha:new Date().toISOString()}]};
+}
+});
+// Guardar automáticamente a Firebase
+guardarTodo({viajeGastos,viajeViajeros,cal:newCal,scores,jugadores,ultimaActualizacion:new Date().toISOString()},true);
+return newCal;
+});
+};
+
+// Confirmar asistencia a COMIDA (cualquier usuario puede confirmar)
+const toggleConfComida=(pruebaId,jug)=>{
+setCal(prev=>{
+const newCal=prev.map(p=>{
+if(p.id!==pruebaId)return p;
+const conf=p.confComida||[];
+const yaConf=conf.find(c=>c.id===jug.id);
+if(yaConf){
+return{...p,confComida:conf.filter(c=>c.id!==jug.id)};
+}else{
+return{...p,confComida:[...conf,{id:jug.id,nombre:jug.nombre,fecha:new Date().toISOString()}]};
+}
+});
+// Guardar automáticamente a Firebase
+guardarTodo({viajeGastos,viajeViajeros,cal:newCal,scores,jugadores,ultimaActualizacion:new Date().toISOString()},true);
+return newCal;
+});
+};
+
 // CRUD Grupos con admin - con guardado automático (solo en modo Admin)
 const addGrp=(pruebaId)=>{
 const code=genCode();
@@ -1290,7 +1328,11 @@ return(
 <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>{p.done?'✅':iconoTipo} {p.nombre}</div>
 <div style={{fontSize:12,color:'#666'}}>{campo?.nombre||'Campo por confirmar'}</div>
 {p.done?<div style={{fontSize:11,color:'#2e7d32',marginTop:3,fontWeight:600}}>Ver resultados →</div>:
-campo&&campo.id!=='pendiente'&&<div style={{fontSize:11,color:'#888',marginTop:3}}>Par {campo.par} • 18 hoyos</div>}
+<div style={{fontSize:11,marginTop:3,display:'flex',gap:10}}>
+{campo&&campo.id!=='pendiente'&&<span style={{color:'#888'}}>Par {campo.par}</span>}
+<span style={{color:'#4caf50'}}>⛳ {(p.confJuego||[]).length}</span>
+<span style={{color:'#ff9800'}}>🍽️ {(p.confComida||[]).length}</span>
+</div>}
 </div>
 {!p.done&&<div style={{alignSelf:'center',color:'#888',fontSize:14}}>{selCampo===p.id?'▲':'▼'}</div>}
 {p.done&&<div style={{alignSelf:'center',color:'#2e7d32',fontSize:18}}>→</div>}
@@ -1360,19 +1402,35 @@ campo&&campo.id!=='pendiente'&&<div style={{fontSize:11,color:'#888',marginTop:3
 <span>In: <strong>{campo.hoyos.slice(9,18).reduce((s,h)=>s+h.p,0)}</strong></span>
 </div>
 </div>
-{/* Sección confirmar asistencia */}
+{/* Sección confirmar asistencia JUEGO */}
 <div style={{marginTop:15,borderTop:'1px solid #eee',paddingTop:15}}>
-<div style={{fontWeight:700,marginBottom:10,fontSize:13}}>✋ Confirmar Asistencia</div>
-<div style={{fontSize:12,color:'#666',marginBottom:10}}>Inscritos: {(p.ins||[]).length} jugadores</div>
-<div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+<div style={{fontWeight:700,marginBottom:8,fontSize:13}}>⛳ ¿Vienes a jugar?</div>
+<div style={{fontSize:11,color:'#666',marginBottom:10}}>Confirmados: {(p.confJuego||[]).length} jugadores</div>
+<div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
 {jugadores.map(j=>{
-const inscrito=(p.ins||[]).some(x=>x.id===j.id);
+const confirmado=(p.confJuego||[]).some(x=>x.id===j.id);
 return(
-<button key={j.id} onClick={(e)=>{e.stopPropagation();inscrito?remIns(p.id,j.id):addIns(p.id,j);}} style={{
-padding:'8px 12px',borderRadius:20,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,
-background:inscrito?'linear-gradient(135deg,#4caf50,#66bb6a)':'#f0f0f0',
-color:inscrito?'#fff':'#666'
-}}>{inscrito?'✓':''} {j.nombre}</button>
+<button key={j.id} onClick={(e)=>{e.stopPropagation();toggleConfJuego(p.id,j);}} style={{
+padding:'6px 10px',borderRadius:16,border:'none',cursor:'pointer',fontSize:10,fontWeight:600,
+background:confirmado?'linear-gradient(135deg,#4caf50,#66bb6a)':'#f0f0f0',
+color:confirmado?'#fff':'#666'
+}}>{confirmado?'✓ ':''}{j.nombre}</button>
+);})}
+</div>
+</div>
+{/* Sección confirmar asistencia COMIDA */}
+<div style={{marginTop:12,borderTop:'1px solid #eee',paddingTop:12}}>
+<div style={{fontWeight:700,marginBottom:8,fontSize:13}}>🍽️ ¿Te quedas a comer?</div>
+<div style={{fontSize:11,color:'#666',marginBottom:10}}>Confirmados: {(p.confComida||[]).length} jugadores</div>
+<div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+{jugadores.map(j=>{
+const confirmado=(p.confComida||[]).some(x=>x.id===j.id);
+return(
+<button key={j.id} onClick={(e)=>{e.stopPropagation();toggleConfComida(p.id,j);}} style={{
+padding:'6px 10px',borderRadius:16,border:'none',cursor:'pointer',fontSize:10,fontWeight:600,
+background:confirmado?'linear-gradient(135deg,#ff9800,#ffb74d)':'#f0f0f0',
+color:confirmado?'#fff':'#666'
+}}>{confirmado?'✓ ':''}{j.nombre}</button>
 );})}
 </div>
 </div>
@@ -1384,19 +1442,35 @@ color:inscrito?'#fff':'#666'
 <div style={{fontSize:24,marginBottom:8}}>🏌️</div>
 <p style={{fontSize:12}}>Campo por confirmar</p>
 </div>
-{/* Sección confirmar asistencia */}
+{/* Sección confirmar asistencia JUEGO */}
 <div style={{borderTop:'1px solid #eee',paddingTop:15}}>
-<div style={{fontWeight:700,marginBottom:10,fontSize:13}}>✋ Confirmar Asistencia</div>
-<div style={{fontSize:12,color:'#666',marginBottom:10}}>Inscritos: {(p.ins||[]).length} jugadores</div>
-<div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+<div style={{fontWeight:700,marginBottom:8,fontSize:13}}>⛳ ¿Vienes a jugar?</div>
+<div style={{fontSize:11,color:'#666',marginBottom:10}}>Confirmados: {(p.confJuego||[]).length} jugadores</div>
+<div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
 {jugadores.map(j=>{
-const inscrito=(p.ins||[]).some(x=>x.id===j.id);
+const confirmado=(p.confJuego||[]).some(x=>x.id===j.id);
 return(
-<button key={j.id} onClick={(e)=>{e.stopPropagation();inscrito?remIns(p.id,j.id):addIns(p.id,j);}} style={{
-padding:'8px 12px',borderRadius:20,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,
-background:inscrito?'linear-gradient(135deg,#4caf50,#66bb6a)':'#f0f0f0',
-color:inscrito?'#fff':'#666'
-}}>{inscrito?'✓':''} {j.nombre}</button>
+<button key={j.id} onClick={(e)=>{e.stopPropagation();toggleConfJuego(p.id,j);}} style={{
+padding:'6px 10px',borderRadius:16,border:'none',cursor:'pointer',fontSize:10,fontWeight:600,
+background:confirmado?'linear-gradient(135deg,#4caf50,#66bb6a)':'#f0f0f0',
+color:confirmado?'#fff':'#666'
+}}>{confirmado?'✓ ':''}{j.nombre}</button>
+);})}
+</div>
+</div>
+{/* Sección confirmar asistencia COMIDA */}
+<div style={{marginTop:12,borderTop:'1px solid #eee',paddingTop:12}}>
+<div style={{fontWeight:700,marginBottom:8,fontSize:13}}>🍽️ ¿Te quedas a comer?</div>
+<div style={{fontSize:11,color:'#666',marginBottom:10}}>Confirmados: {(p.confComida||[]).length} jugadores</div>
+<div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+{jugadores.map(j=>{
+const confirmado=(p.confComida||[]).some(x=>x.id===j.id);
+return(
+<button key={j.id} onClick={(e)=>{e.stopPropagation();toggleConfComida(p.id,j);}} style={{
+padding:'6px 10px',borderRadius:16,border:'none',cursor:'pointer',fontSize:10,fontWeight:600,
+background:confirmado?'linear-gradient(135deg,#ff9800,#ffb74d)':'#f0f0f0',
+color:confirmado?'#fff':'#666'
+}}>{confirmado?'✓ ':''}{j.nombre}</button>
 );})}
 </div>
 </div>
